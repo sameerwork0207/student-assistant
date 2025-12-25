@@ -1,6 +1,5 @@
 import type { Metadata } from 'next';
 import { AppProvider } from '@/context/AppContext';
-import { ServiceWorkerLoader } from '@/components/ServiceWorkerLoader';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -19,7 +18,6 @@ export default function RootLayout({
     <html lang="en">
       <body>
         <AppProvider>
-          <ServiceWorkerLoader />
           {children}
         </AppProvider>
       </body>

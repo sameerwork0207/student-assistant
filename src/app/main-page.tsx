@@ -27,10 +27,12 @@ export default function Home() {
     );
   }
 
+  // Show onboarding if not completed
   if (!state.hasCompletedOnboarding) {
     return <OnboardingFlow onComplete={() => window.location.reload()} />;
   }
 
+  // Render content based on current tab
   const renderContent = () => {
     if (currentTab === 'dashboard') {
       return <Dashboard />;
@@ -40,6 +42,7 @@ export default function Home() {
       return <LifeActivityTracker />;
     }
 
+    // Find matching domain
     const domain = state.domains.find((d) => d.id === currentTab);
     if (!domain) {
       return <Dashboard />;
@@ -55,6 +58,7 @@ export default function Home() {
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Input Form */}
           <div className="lg:col-span-2 bg-white rounded-lg p-6 border border-gray-200">
             <h2 className="text-xl font-bold mb-4">Log Activity</h2>
             {currentTab === 'academic_studies' && (
@@ -83,6 +87,7 @@ export default function Home() {
             )}
           </div>
 
+          {/* Recent Activity */}
           <div className="bg-white rounded-lg p-6 border border-gray-200">
             <h2 className="text-xl font-bold mb-4">Recent Activity</h2>
             {state.tasks
