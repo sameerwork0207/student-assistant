@@ -12,22 +12,22 @@ interface EducationStepProps {
 export function EducationLevelStep({ onNext }: EducationStepProps) {
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold">What is your education level?</h2>
-      <p className="text-gray-600">This helps us personalize your experience</p>
+      <h2 className="text-xl font-bold text-white text-center">What is your education level?</h2>
+      <p className="text-sm text-zinc-400 text-center">This helps us personalize your tracking experience</p>
 
-      <div className="grid gap-3">
+      <div className="grid gap-3 pt-2">
         {[
-          { level: EducationLevel.SCHOOL, label: 'School', icon: '🎒' },
-          { level: EducationLevel.JUNIOR_COLLEGE, label: 'Junior College', icon: '📚' },
-          { level: EducationLevel.DEGREE_COLLEGE, label: 'Degree College', icon: '🎓' },
+          { level: EducationLevel.SCHOOL, label: 'School / K-12', icon: '🎒' },
+          { level: EducationLevel.JUNIOR_COLLEGE, label: 'Junior College / Prep', icon: '📚' },
+          { level: EducationLevel.DEGREE_COLLEGE, label: 'Degree College / University', icon: '🎓' },
         ].map(({ level, label, icon }) => (
           <button
             key={level}
             onClick={() => onNext(level)}
-            className="p-4 border-2 border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all text-left"
+            className="flex items-center gap-4 p-4 bg-zinc-900 border border-zinc-800 rounded-xl hover:border-blue-500 hover:bg-zinc-800/50 transition-all text-left group"
           >
-            <span className="text-3xl mr-3">{icon}</span>
-            <span className="text-lg font-semibold">{label}</span>
+            <span className="text-3xl transition-transform group-hover:scale-110">{icon}</span>
+            <span className="text-base font-semibold text-zinc-200 group-hover:text-white">{label}</span>
           </button>
         ))}
       </div>
@@ -61,7 +61,7 @@ export function EducationDetailsStep({ level, onNext, onBack }: EducationDetails
       details = { level, stream } as JuniorCollegeDetails;
     } else {
       if (!degree.trim()) {
-        alert('Please enter your degree');
+        alert('Please enter your degree name');
         return;
       }
       details = { level, degree, specialization, year } as DegreeCollegeDetails;
@@ -72,204 +72,205 @@ export function EducationDetailsStep({ level, onNext, onBack }: EducationDetails
 
   return (
     <div className="space-y-4">
-      <button onClick={onBack} className="text-blue-500 hover:underline mb-4">
+      <button onClick={onBack} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-1">
         ← Back
       </button>
 
       {level === EducationLevel.SCHOOL && (
-        <>
-          <h2 className="text-2xl font-bold">What is your class/grade?</h2>
+        <div className="space-y-3">
+          <h2 className="text-xl font-bold text-white">What is your class / grade?</h2>
           <input
             type="text"
-            placeholder="e.g., 10, 11, 12"
+            placeholder="e.g., 10th Grade, Class 11"
             value={classGrade}
             onChange={(e) => setClassGrade(e.target.value)}
-            className="w-full p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+            className="w-full bg-zinc-900 border border-zinc-800 text-zinc-100 p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors placeholder-zinc-600"
           />
-        </>
+        </div>
       )}
 
       {level === EducationLevel.JUNIOR_COLLEGE && (
-        <>
-          <h2 className="text-2xl font-bold">What is your stream?</h2>
-          <div className="grid gap-3">
+        <div className="space-y-3">
+          <h2 className="text-xl font-bold text-white">What stream are you in?</h2>
+          <div className="grid gap-2">
             {(['Science', 'Commerce', 'Arts'] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => setStream(s)}
-                className={`p-3 border-2 rounded-lg transition-all ${
+                className={`p-3 text-left font-semibold rounded-xl border transition-all ${
                   stream === s
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-300 hover:border-blue-300'
+                    ? 'border-blue-500 bg-blue-600/10 text-blue-400'
+                    : 'border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-zinc-700'
                 }`}
               >
-                {s}
+                {s} Stream
               </button>
             ))}
           </div>
-        </>
+        </div>
       )}
 
       {level === EducationLevel.DEGREE_COLLEGE && (
-        <>
-          <h2 className="text-2xl font-bold">Tell us about your degree</h2>
-          <input
-            type="text"
-            placeholder="e.g., B.Tech, B.A., B.Com"
-            value={degree}
-            onChange={(e) => setDegree(e.target.value)}
-            className="w-full p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-          />
-          <input
-            type="text"
-            placeholder="Specialization (optional)"
-            value={specialization}
-            onChange={(e) => setSpecialization(e.target.value)}
-            className="w-full p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-          />
-          <div>
-            <label className="block text-sm font-semibold mb-2">Current Year</label>
-            <select
-              value={year}
-              onChange={(e) => setYear(parseInt(e.target.value) as 1 | 2 | 3 | 4)}
-              className="w-full p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-            >
-              <option value={1}>1st Year</option>
-              <option value={2}>2nd Year</option>
-              <option value={3}>3rd Year</option>
-              <option value={4}>4th Year</option>
-            </select>
+        <div className="space-y-3">
+          <h2 className="text-xl font-bold text-white">Tell us about your university studies</h2>
+          <div className="space-y-2">
+            <input
+              type="text"
+              placeholder="Degree (e.g., Engineering, BCA, Business)"
+              value={degree}
+              onChange={(e) => setDegree(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-800 text-zinc-100 p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors placeholder-zinc-600"
+            />
+            <input
+              type="text"
+              placeholder="Specialization (optional, e.g., Computer Science)"
+              value={specialization}
+              onChange={(e) => setSpecialization(e.target.value)}
+              className="w-full bg-zinc-900 border border-zinc-800 text-zinc-100 p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors placeholder-zinc-600"
+            />
+            <div>
+              <label className="block text-xs font-semibold text-zinc-400 mb-1">Current Academic Year</label>
+              <select
+                value={year}
+                onChange={(e) => setYear(parseInt(e.target.value) as 1 | 2 | 3 | 4)}
+                className="w-full bg-zinc-900 border border-zinc-800 text-zinc-100 p-3 rounded-xl focus:outline-none focus:border-blue-500 transition-colors"
+              >
+                <option value={1}>1st Year</option>
+                <option value={2}>2nd Year</option>
+                <option value={3}>3rd Year</option>
+                <option value={4}>4th Year</option>
+              </select>
+            </div>
           </div>
-        </>
+        </div>
       )}
 
       <button
         onClick={handleSubmit}
-        className="w-full bg-blue-500 text-white p-3 rounded-lg font-semibold hover:bg-blue-600 transition-all"
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-semibold transition-all mt-4"
       >
-        Next
+        Next Step
       </button>
     </div>
   );
 }
 
 interface DomainSelectionStepProps {
-  onNext: (domains: string[]) => void;
+  onNext: (domains: { id: string; label: string; icon: string; selected: boolean }[], customDomains: string[]) => void;
   onBack: () => void;
 }
 
 export function DomainSelectionStep({ onNext, onBack }: DomainSelectionStepProps) {
-  const defaultDomains = [
-    { id: 'academic_studies', label: 'Academic Studies', icon: '📖', selected: true },
+  const [defaultDomains, setDefaultDomains] = useState([
+    { id: 'academic_studies', label: 'Academic Studies', icon: '🎓', selected: true },
     { id: 'personal_studies', label: 'Personal Studies', icon: '📚', selected: true },
-    { id: 'sports_hobbies', label: 'Sports / Hobbies / Art', icon: '🎨', selected: true },
-  ];
+    { id: 'sports', label: 'Sports Practice', icon: '⚽', selected: true },
+    { id: 'hobbies', label: 'Hobbies', icon: '🎮', selected: true },
+    { id: 'art', label: 'Art / Creativity', icon: '🎨', selected: true },
+  ]);
 
-  const [selected, setSelected] = useState<Set<string>>(
-    new Set(defaultDomains.filter((d) => d.selected).map((d) => d.id))
-  );
   const [customDomain, setCustomDomain] = useState('');
   const [customDomains, setCustomDomains] = useState<string[]>([]);
 
   const toggleDomain = (id: string) => {
-    const newSelected = new Set(selected);
-    if (newSelected.has(id)) {
-      newSelected.delete(id);
-    } else {
-      newSelected.add(id);
-    }
-    setSelected(newSelected);
+    setDefaultDomains(
+      defaultDomains.map((d) => (d.id === id ? { ...d, selected: !d.selected } : d))
+    );
   };
 
   const addCustomDomain = () => {
-    if (customDomain.trim() && !customDomains.includes(customDomain)) {
-      setCustomDomains([...customDomains, customDomain]);
-      setSelected(new Set([...Array.from(selected), customDomain]));
+    if (customDomain.trim() && !customDomains.includes(customDomain.trim())) {
+      setCustomDomains([...customDomains, customDomain.trim()]);
       setCustomDomain('');
     }
   };
 
   const removeCustomDomain = (domain: string) => {
     setCustomDomains(customDomains.filter((d) => d !== domain));
-    const newSelected = new Set(selected);
-    newSelected.delete(domain);
-    setSelected(newSelected);
   };
 
   const handleNext = () => {
-    if (selected.size === 0) {
-      alert('Please select at least one domain');
+    const selectedDefaults = defaultDomains.filter((d) => d.selected);
+    if (selectedDefaults.length === 0 && customDomains.length === 0) {
+      alert('Please select or add at least one tracking domain');
       return;
     }
-    onNext(Array.from(selected));
+    onNext(defaultDomains, customDomains);
   };
 
   return (
     <div className="space-y-4">
-      <button onClick={onBack} className="text-blue-500 hover:underline mb-4">
+      <button onClick={onBack} className="text-sm text-zinc-400 hover:text-white transition-colors flex items-center gap-1">
         ← Back
       </button>
 
-      <h2 className="text-2xl font-bold">What areas of your life do you want to track?</h2>
-      <p className="text-gray-600">You can add custom domains later</p>
+      <h2 className="text-xl font-bold text-white">What sectors do you want to track?</h2>
+      <p className="text-xs text-zinc-400">Deselect default domains or create custom ones. You can always edit them later.</p>
 
-      <div className="space-y-3">
+      <div className="space-y-2 pt-2">
         {defaultDomains.map((domain) => (
           <button
             key={domain.id}
             onClick={() => toggleDomain(domain.id)}
-            className={`w-full p-4 border-2 rounded-lg text-left transition-all ${
-              selected.has(domain.id)
-                ? 'border-blue-500 bg-blue-50'
-                : 'border-gray-300 hover:border-gray-400'
+            className={`w-full flex items-center justify-between p-3.5 border rounded-xl transition-all ${
+              domain.selected
+                ? 'border-blue-500 bg-blue-600/10 text-blue-400'
+                : 'border-zinc-800 bg-zinc-900/50 text-zinc-400 hover:border-zinc-700'
             }`}
           >
-            <span className="text-2xl mr-3">{domain.icon}</span>
-            <span className="font-semibold">{domain.label}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-xl">{domain.icon}</span>
+              <span className="font-semibold text-sm">{domain.label}</span>
+            </div>
+            <span className="text-xs font-semibold">{domain.selected ? '✓ Active' : '✕ Disabled'}</span>
           </button>
         ))}
       </div>
 
       {customDomains.length > 0 && (
-        <div className="space-y-2">
-          <p className="font-semibold text-sm">Custom Domains</p>
-          {customDomains.map((domain) => (
-            <div
-              key={domain}
-              className="p-3 bg-purple-50 border-2 border-purple-300 rounded-lg flex justify-between items-center"
-            >
-              <span>{domain}</span>
-              <button
-                onClick={() => removeCustomDomain(domain)}
-                className="text-red-500 hover:text-red-700"
+        <div className="space-y-2 pt-2">
+          <p className="font-semibold text-xs text-zinc-400">Custom Sectors</p>
+          <div className="flex flex-wrap gap-2">
+            {customDomains.map((domain) => (
+              <span
+                key={domain}
+                className="bg-purple-950/40 text-purple-400 border border-purple-800 px-3 py-1.5 rounded-lg flex items-center gap-2 text-xs font-semibold"
               >
-                ✕
-              </button>
-            </div>
-          ))}
+                <span>📌</span>
+                {domain}
+                <button
+                  type="button"
+                  onClick={() => removeCustomDomain(domain)}
+                  className="text-red-400 hover:text-red-200 focus:outline-none"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
-      <div className="flex gap-2">
+      <div className="flex gap-2 pt-2">
         <input
           type="text"
-          placeholder="Add custom domain..."
+          placeholder="e.g., Coding, Volunteering"
           value={customDomain}
           onChange={(e) => setCustomDomain(e.target.value)}
-          onKeyPress={(e) => e.key === 'Enter' && addCustomDomain()}
-          className="flex-1 p-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+          onKeyDown={(e) => e.key === 'Enter' && addCustomDomain()}
+          className="flex-1 bg-zinc-900 border border-zinc-800 text-zinc-100 p-2.5 rounded-xl focus:outline-none focus:border-blue-500 transition-colors placeholder-zinc-600 text-sm"
         />
         <button
           onClick={addCustomDomain}
-          className="px-4 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-all"
+          className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 rounded-xl transition-all text-sm font-semibold"
         >
-          Add
+          Add Custom
         </button>
       </div>
 
       <button
         onClick={handleNext}
-        className="w-full bg-blue-500 text-white p-3 rounded-lg font-semibold hover:bg-blue-600 transition-all"
+        className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-semibold transition-all mt-4"
       >
         Complete Setup
       </button>
@@ -297,7 +298,10 @@ export function OnboardingFlow({ onComplete }: OnboardingProps) {
     setStep('domains');
   };
 
-  const handleDomainsNext = (domains: string[]) => {
+  const handleDomainsNext = (
+    defaultDomains: { id: string; label: string; icon: string; selected: boolean }[],
+    customDomains: string[]
+  ) => {
     if (!educationDetails) return;
 
     // Create user profile
@@ -311,41 +315,59 @@ export function OnboardingFlow({ onComplete }: OnboardingProps) {
 
     setUser(user);
 
-    // Create domains
-    const defaultDomainNames: Record<string, { label: string; icon: string }> = {
-      academic_studies: { label: 'Academic Studies', icon: '📖' },
-      personal_studies: { label: 'Personal Studies', icon: '📚' },
-      sports_hobbies_art: { label: 'Sports / Hobbies / Art', icon: '🎨' },
+    // Default configuration mappings
+    const defaultDomainConfigs: Record<string, { label: string; icon: string; color: string }> = {
+      academic_studies: { label: 'Academic Studies', icon: '🎓', color: '#3B82F6' },
+      personal_studies: { label: 'Personal Studies', icon: '📚', color: '#8B5CF6' },
+      sports: { label: 'Sports Practice', icon: '⚽', color: '#10B981' },
+      hobbies: { label: 'Hobbies', icon: '🎮', color: '#F59E0B' },
+      art: { label: 'Art / Creativity', icon: '🎨', color: '#EC4899' },
     };
 
     const domainColors = [
-      '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899',
-      '#06B6D4', '#14B8A6', '#F97316', '#6366F1',
+      '#06B6D4', '#14B8A6', '#F97316', '#6366F1', '#EC4899'
     ];
 
-    domains.forEach((domainId, index) => {
-      const domainConfig = defaultDomainNames[domainId];
-      const isCustom = !domainConfig;
+    // Add selected default domains
+    let colorIndex = 0;
+    defaultDomains.forEach((d) => {
+      if (d.selected) {
+        const config = defaultDomainConfigs[d.id];
+        addDomain({
+          id: d.id,
+          name: config.label,
+          description: `Track your ${config.label.toLowerCase()}`,
+          isCustom: false,
+          color: config.color,
+          icon: config.icon,
+          createdAt: Date.now(),
+        });
+      }
+    });
 
+    // Add custom domains
+    customDomains.forEach((name) => {
+      const cId = name.toLowerCase().replace(/[^a-z0-9]/g, '_');
       addDomain({
-        id: domainId,
-        name: domainConfig?.label || domainId,
-        description: '',
-        isCustom,
-        color: domainColors[index % domainColors.length],
-        icon: domainConfig?.icon,
+        id: cId,
+        name,
+        description: `Track your custom sector: ${name}`,
+        isCustom: true,
+        color: domainColors[colorIndex % domainColors.length],
+        icon: '📌',
         createdAt: Date.now(),
-      });
+        });
+      colorIndex++;
     });
 
     onComplete();
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl shadow-2xl p-8 max-w-md w-full">
-        <h1 className="text-3xl font-bold mb-2 text-center text-blue-600">Student Assistant</h1>
-        <p className="text-center text-gray-600 mb-8">Let's get you set up!</p>
+    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
+      <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-6 md:p-8 max-w-md w-full">
+        <h1 className="text-2xl font-bold mb-1 text-center text-blue-500">Student Assistant</h1>
+        <p className="text-center text-zinc-400 text-sm mb-6">Let's set up your profile and dashboard</p>
 
         {step === 'education-level' && (
           <EducationLevelStep onNext={handleEducationLevelNext} />

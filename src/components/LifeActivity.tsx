@@ -4,280 +4,530 @@ import React, { useState, useMemo } from 'react';
 import { LifeActivity } from '@/types';
 import { useApp } from '@/context/AppContext';
 import { getTodayMidnight, formatHours, timeToHours } from '@/lib/utils';
+import { Moon, Car, Utensils, Smartphone, Users, Plus, Trash2, AlertTriangle, CheckCircle } from 'lucide-react';
 
 export function LifeActivityTracker() {
   const { state, saveLifeActivity } = useApp();
+
+  // Inputs state (Hours and Minutes)
   const [sleepHours, setSleepHours] = useState(7);
   const [sleepMinutes, setSleepMinutes] = useState(0);
-  const [eatingHours, setEatingHours] = useState(1);
-  const [eatingMinutes, setEatingMinutes] = useState(0);
+  
   const [travelHours, setTravelHours] = useState(1);
   const [travelMinutes, setTravelMinutes] = useState(0);
-  const [idleHours, setIdleHours] = useState(2);
-  const [idleMinutes, setIdleMinutes] = useState(0);
-  const [sleepQuality, setSleepQuality] = useState<'Poor' | 'Fair' | 'Good' | 'Excellent'>('Good');
+  
+  const [mealsHours, setMealsHours] = useState(1);
+  const [mealsMinutes, setMealsMinutes] = useState(30);
+  
+  const [scrollHours, setScrollHours] = useState(2);
+  const [scrollMinutes, setScrollMinutes] = useState(0);
+  
+  const [socialHours, setSocialHours] = useState(1);
+  const [socialMinutes, setSocialMinutes] = useState(0);
+
+  // Custom fields state
+  const [customFieldName, setCustomFieldName] = useState('');
+  const [customFieldHours, setCustomFieldHours] = useState(1);
+  const [customFieldMinutes, setCustomFieldMinutes] = useState(0);
+  const [customFieldsList, setCustomFieldsList] = useState<Record<string, number>>({});
 
   const todayMidnight = getTodayMidnight();
-  const todayActivity = useMemo(() => {
-    const dateKey = new Date(todayMidnight).toISOString().split('T')[0];
-    return state.lifeActivities[dateKey] || null;
-  }, [state.lifeActivities, todayMidnight]);
+  const dateKey = useMemo(() => {
+    return new Date(todayMidnight).toISOString().split('T')[0];
+  }, [todayMidnight]);
 
-  // Load today's data if exists
+  const todayActivity = useMemo(() => {
+    return state.lifeActivities[dateKey] || null;
+  }, [state.lifeActivities, dateKey]);
+
+  // Load today's data if it exists
   React.useEffect(() => {
     if (todayActivity) {
-      setSleepHours(Math.floor(todayActivity.sleep.hours));
-      setSleepMinutes(Math.round((todayActivity.sleep.hours % 1) * 60));
-      setSleepQuality(todayActivity.sleep.quality || 'Good');
-      setEatingHours(Math.floor(todayActivity.eating));
-      setEatingMinutes(Math.round((todayActivity.eating % 1) * 60));
+      setSleepHours(Math.floor(todayActivity.sleep));
+      setSleepMinutes(Math.round((todayActivity.sleep % 1) * 60));
+      
       setTravelHours(Math.floor(todayActivity.travel));
       setTravelMinutes(Math.round((todayActivity.travel % 1) * 60));
-      setIdleHours(Math.floor(todayActivity.idleScrolling));
-      setIdleMinutes(Math.round((todayActivity.idleScrolling % 1) * 60));
+      
+      setMealsHours(Math.floor(todayActivity.meals));
+      setMealsMinutes(Math.round((todayActivity.meals % 1) * 60));
+      
+      setScrollHours(Math.floor(todayActivity.scrollIdle));
+      setScrollMinutes(Math.round((todayActivity.scrollIdle % 1) * 60));
+      
+      setSocialHours(Math.floor(todayActivity.socialize));
+      setSocialMinutes(Math.round((todayActivity.socialize % 1) * 60));
+      
+      setCustomFieldsList(todayActivity.custom || {});
     }
   }, [todayActivity]);
+
+  // Check custom field keywords to block double-counting
+  const handleAddCustomField = () => {
+    const name = customFieldName.trim();
+    if (!name) return;
+
+    // Block words containing "study", "coding", "practice", "work" (case insensitive)
+    const blockedKeywords = [/study/i, /coding/i, /practice/i, /work/i, /academic/i, /programming/i];
+    const isBlocked = blockedKeywords.some((regex) => regex.test(name));
+
+    if (isBlocked) {
+      alert(`⚠️ Category Name Blocked!\nPlease do not enter productive activities like "${name}" in Life Activity. Use the Tasks or Log Activity views instead to avoid double-counting hours.`);
+      return;
+    }
+
+    const duration = customFieldHours + (customFieldMinutes / 60);
+    if (duration <= 0) {
+      alert('Duration must be greater than zero');
+      return;
+    }
+
+    setCustomFieldsList((prev) => ({
+      ...prev,
+      [name]: parseFloat(duration.toFixed(2)),
+    }));
+
+    // Reset custom inputs
+    setCustomFieldName('');
+    setCustomFieldHours(1);
+    setCustomFieldMinutes(0);
+  };
+
+  const handleRemoveCustomField = (name: string) => {
+    setCustomFieldsList((prev) => {
+      const updated = { ...prev };
+      delete updated[name];
+      return updated;
+    });
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
     const activity: LifeActivity = {
       date: todayMidnight,
-      sleep: {
-        hours: timeToHours(sleepHours, sleepMinutes),
-        quality: sleepQuality,
-      },
-      eating: timeToHours(eatingHours, eatingMinutes),
-      travel: timeToHours(travelHours, travelMinutes),
-      idleScrolling: timeToHours(idleHours, idleMinutes),
+      sleep: sleepHours + (sleepMinutes / 60),
+      travel: travelHours + (travelMinutes / 60),
+      meals: mealsHours + (mealsMinutes / 60),
+      scrollIdle: scrollHours + (scrollMinutes / 60),
+      socialize: socialHours + (socialMinutes / 60),
+      custom: customFieldsList,
     };
 
     saveLifeActivity(activity);
-    alert('Life activity logged successfully!');
+    alert('Life activities saved successfully!');
   };
 
-  // Calculate untracked hours
-  const totalTrackedActivity =
-    timeToHours(sleepHours, sleepMinutes) +
-    timeToHours(eatingHours, eatingMinutes) +
-    timeToHours(travelHours, travelMinutes) +
-    timeToHours(idleHours, idleMinutes);
+  // 1. Calculate productive hours today (using ActivityLogs today as single source of truth)
+  const productiveHoursToday = useMemo(() => {
+    return state.activityLogs
+      .filter((log) => {
+        const logMidnight = new Date(log.date).setHours(0, 0, 0, 0);
+        return logMidnight === todayMidnight;
+      })
+      .reduce((sum, log) => sum + (log.hoursSpent || 0), 0);
+  }, [state.activityLogs, todayMidnight]);
 
-  const todayTotalHours = state.analytics.dailyStats[new Date(todayMidnight).toISOString().split('T')[0]]?.totalHours || 0;
-  const untrackedHours = Math.max(0, 24 - totalTrackedActivity - todayTotalHours);
+  // 2. Calculate sum of life activities
+  const sleepTotal = sleepHours + (sleepMinutes / 60);
+  const travelTotal = travelHours + (travelMinutes / 60);
+  const mealsTotal = mealsHours + (mealsMinutes / 60);
+  const scrollTotal = scrollHours + (scrollMinutes / 60);
+  const socialTotal = socialHours + (socialMinutes / 60);
+  const customTotal = Object.values(customFieldsList).reduce((sum, v) => sum + v, 0);
+
+  const lifeActivitiesTotal = sleepTotal + travelTotal + mealsTotal + scrollTotal + socialTotal + customTotal;
+  const totalAccountedHours = lifeActivitiesTotal + productiveHoursToday;
+
+  // 3. Validation and remaining hours calculations
+  const isOverbooked = totalAccountedHours > 24;
+  const remainingHours = Math.max(0, 24 - totalAccountedHours);
+
+  // 4. Distribution segments for visual stacked bar
+  const segments = useMemo(() => {
+    const arr = [
+      { key: 'sleep', label: 'Sleep', value: sleepTotal, color: '#3b82f6' }, // blue-500
+      { key: 'travel', label: 'Travel', value: travelTotal, color: '#f59e0b' }, // amber-500
+      { key: 'meals', label: 'Meals', value: mealsTotal, color: '#ef4444' }, // red-500
+      { key: 'scroll', label: 'Scroll/Idle', value: scrollTotal, color: '#71717a' }, // zinc-500
+      { key: 'social', label: 'Socialize', value: socialTotal, color: '#10b981' }, // emerald-500
+      { key: 'productive', label: 'Productive Time', value: productiveHoursToday, color: '#8b5cf6' }, // purple-500
+    ];
+
+    // Add custom fields
+    Object.keys(customFieldsList).forEach((name) => {
+      arr.push({
+        key: `custom_${name}`,
+        label: name,
+        value: customFieldsList[name],
+        color: '#d946ef', // fuchsia-500
+      });
+    });
+
+    // Add remaining segment if day not overbooked
+    if (!isOverbooked && remainingHours > 0) {
+      arr.push({
+        key: 'remaining',
+        label: 'Unallocated Time',
+        value: remainingHours,
+        color: '#18181b', // zinc-900
+      });
+    }
+
+    return arr.filter((s) => s.value > 0);
+  }, [sleepTotal, travelTotal, mealsTotal, scrollTotal, socialTotal, productiveHoursToday, customFieldsList, isOverbooked, remainingHours]);
 
   return (
     <div className="space-y-6">
+      {/* Header */}
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">Life Activity Tracking</h1>
-        <p className="text-gray-600 mt-1">Track your daily routine to calculate available productive time</p>
+        <h2 className="text-2xl font-bold text-white tracking-tight">Life Activity Tracking</h2>
+        <p className="text-sm text-zinc-400">Track your daily routine to understand your unallocated time balance.</p>
       </div>
 
-      <form onSubmit={handleSubmit} className="bg-white rounded-lg p-6 border border-gray-200 space-y-6">
-        {/* Sleep */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-2xl">😴</span>
-            <h3 className="text-lg font-bold">Sleep</h3>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4 mb-3">
-            <div>
-              <label className="block text-sm font-semibold mb-2">Hours</label>
-              <input
-                type="number"
-                min="0"
-                max="24"
-                value={sleepHours}
-                onChange={(e) => setSleepHours(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">Minutes</label>
-              <input
-                type="number"
-                min="0"
-                max="59"
-                value={sleepMinutes}
-                onChange={(e) => setSleepMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
-
+      {/* Overbooked Alert */}
+      {isOverbooked && (
+        <div className="bg-red-950/20 border border-red-900/60 p-4 rounded-2xl flex items-start gap-3 text-red-400 animate-pulse">
+          <AlertTriangle className="mt-0.5 flex-shrink-0" size={18} />
           <div>
-            <label className="block text-sm font-semibold mb-2">Sleep Quality</label>
-            <div className="grid grid-cols-4 gap-2">
-              {(['Poor', 'Fair', 'Good', 'Excellent'] as const).map((quality) => (
-                <button
-                  key={quality}
-                  type="button"
-                  onClick={() => setSleepQuality(quality)}
-                  className={`p-2 rounded-lg font-medium transition-colors text-sm ${
-                    sleepQuality === quality
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                  }`}
-                >
-                  {quality}
-                </button>
-              ))}
-            </div>
+            <h4 className="text-sm font-bold">⚠️ Overbooked Day Detected</h4>
+            <p className="text-xs leading-relaxed mt-0.5">
+              The total logged hours ({totalAccountedHours.toFixed(1)} hrs) exceed 24 hours. Please review your logs to ensure accurate time distribution.
+            </p>
           </div>
         </div>
+      )}
 
-        <hr className="border-gray-200" />
-
-        {/* Eating */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-2xl">🍽️</span>
-            <h3 className="text-lg font-bold">Eating / Meals</h3>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold mb-2">Hours</label>
-              <input
-                type="number"
-                min="0"
-                max="24"
-                value={eatingHours}
-                onChange={(e) => setEatingHours(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">Minutes</label>
-              <input
-                type="number"
-                min="0"
-                max="59"
-                value={eatingMinutes}
-                onChange={(e) => setEatingMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
+      {/* Visual Stacked 24-Hour Bar */}
+      <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-4">
+        <div className="flex justify-between items-center text-xs font-semibold text-zinc-400">
+          <span>24-Hour Day Allocation</span>
+          <span>Accounted: {totalAccountedHours.toFixed(1)} / 24 hrs</span>
         </div>
 
-        <hr className="border-gray-200" />
-
-        {/* Travel */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-2xl">🚗</span>
-            <h3 className="text-lg font-bold">Travel / Commute</h3>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold mb-2">Hours</label>
-              <input
-                type="number"
-                min="0"
-                max="24"
-                value={travelHours}
-                onChange={(e) => setTravelHours(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">Minutes</label>
-              <input
-                type="number"
-                min="0"
-                max="59"
-                value={travelMinutes}
-                onChange={(e) => setTravelMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-              />
-            </div>
-          </div>
+        {/* Stacked Progress Bar */}
+        <div className="w-full bg-zinc-950 h-7 rounded-xl overflow-hidden flex border border-zinc-800 p-0.5">
+          {segments.map((seg) => {
+            const widthPct = (seg.value / 24) * 100;
+            return (
+              <div
+                key={seg.key}
+                className="h-full first:rounded-l-lg last:rounded-r-lg transition-all relative group cursor-help"
+                style={{
+                  width: `${widthPct}%`,
+                  backgroundColor: seg.color,
+                }}
+              >
+                {/* Visual Segment Tooltip */}
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block bg-zinc-900 border border-zinc-700 text-zinc-100 text-[10px] px-2 py-1 rounded-md shadow-xl whitespace-nowrap z-10">
+                  {seg.label}: {seg.value.toFixed(1)} hrs
+                </div>
+              </div>
+            );
+          })}
         </div>
 
-        <hr className="border-gray-200" />
-
-        {/* Idle / Scrolling */}
-        <div className="space-y-3">
-          <div className="flex items-center gap-2 mb-4">
-            <span className="text-2xl">📱</span>
-            <h3 className="text-lg font-bold">Idle / Scrolling Time</h3>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-semibold mb-2">Hours</label>
-              <input
-                type="number"
-                min="0"
-                max="24"
-                value={idleHours}
-                onChange={(e) => setIdleHours(Math.max(0, parseInt(e.target.value) || 0))}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-              />
+        {/* Labels Legend */}
+        <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
+          {segments.map((seg) => (
+            <div key={seg.key} className="flex items-center gap-2 text-xs font-medium">
+              <span className="w-2.5 h-2.5 rounded" style={{ backgroundColor: seg.color }} />
+              <span className="text-zinc-300">{seg.label}</span>
+              <span className="text-zinc-500">({seg.value.toFixed(1)}h)</span>
             </div>
-            <div>
-              <label className="block text-sm font-semibold mb-2">Minutes</label>
-              <input
-                type="number"
-                min="0"
-                max="59"
-                value={idleMinutes}
-                onChange={(e) => setIdleMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
-                className="w-full p-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-              />
+          ))}
+          {!isOverbooked && remainingHours > 0 && (
+            <div className="flex items-center gap-2 text-xs font-medium">
+              <span className="w-2.5 h-2.5 rounded bg-zinc-950 border border-zinc-800" />
+              <span className="text-zinc-400">Remaining</span>
+              <span className="text-zinc-500">({remainingHours.toFixed(1)}h)</span>
             </div>
-          </div>
+          )}
         </div>
+      </div>
 
-        <button
-          type="submit"
-          className="w-full bg-blue-500 text-white p-3 rounded-lg font-semibold hover:bg-blue-600 transition-colors"
-        >
-          Save Life Activity
-        </button>
-      </form>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Input Form Panel */}
+        <form onSubmit={handleSubmit} className="lg:col-span-2 bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-5">
+          <h3 className="text-base font-bold text-white border-b border-zinc-800 pb-2">Log Daily Categories</h3>
 
-      {/* Time Summary Card */}
-      <div className="bg-gradient-to-br from-purple-50 to-indigo-50 rounded-lg p-6 border border-purple-200">
-        <h3 className="text-lg font-bold mb-4">📊 Daily Time Summary</h3>
-        <div className="space-y-3">
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700">Sleep</span>
-            <span className="font-bold text-lg">{formatHours(timeToHours(sleepHours, sleepMinutes))}</span>
+          {/* Sleep */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5">
+              <Moon className="text-blue-400" size={18} />
+              <span className="text-sm font-semibold text-zinc-300">Sleep</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 pl-7">
+              <div>
+                <label className="block text-[10px] text-zinc-500 mb-1">Hours</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="24"
+                  value={sleepHours}
+                  onChange={(e) => setSleepHours(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-zinc-500 mb-1">Minutes</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="59"
+                  value={sleepMinutes}
+                  onChange={(e) => setSleepMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700">Eating</span>
-            <span className="font-bold text-lg">{formatHours(timeToHours(eatingHours, eatingMinutes))}</span>
+
+          {/* Travel */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5">
+              <Car className="text-amber-400" size={18} />
+              <span className="text-sm font-semibold text-zinc-300">Travel / Commute</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 pl-7">
+              <div>
+                <label className="block text-[10px] text-zinc-500 mb-1">Hours</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="24"
+                  value={travelHours}
+                  onChange={(e) => setTravelHours(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-zinc-500 mb-1">Minutes</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="59"
+                  value={travelMinutes}
+                  onChange={(e) => setTravelMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700">Travel</span>
-            <span className="font-bold text-lg">{formatHours(timeToHours(travelHours, travelMinutes))}</span>
+
+          {/* Meals */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5">
+              <Utensils className="text-red-400" size={18} />
+              <span className="text-sm font-semibold text-zinc-300">Eating / Meals</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 pl-7">
+              <div>
+                <label className="block text-[10px] text-zinc-500 mb-1">Hours</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="24"
+                  value={mealsHours}
+                  onChange={(e) => setMealsHours(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-zinc-500 mb-1">Minutes</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="59"
+                  value={mealsMinutes}
+                  onChange={(e) => setMealsMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700">Idle / Scrolling</span>
-            <span className="font-bold text-lg">{formatHours(timeToHours(idleHours, idleMinutes))}</span>
+
+          {/* Idle / Scrolling */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5">
+              <Smartphone className="text-zinc-400" size={18} />
+              <span className="text-sm font-semibold text-zinc-300">Idle / Scroll Time</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 pl-7">
+              <div>
+                <label className="block text-[10px] text-zinc-500 mb-1">Hours</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="24"
+                  value={scrollHours}
+                  onChange={(e) => setScrollHours(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-zinc-500 mb-1">Minutes</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="59"
+                  value={scrollMinutes}
+                  onChange={(e) => setScrollMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
           </div>
-          <div className="flex justify-between items-center">
-            <span className="text-gray-700">Tracked Productivity</span>
-            <span className="font-bold text-lg">{formatHours(todayTotalHours)}</span>
+
+          {/* Socialize */}
+          <div className="space-y-2">
+            <div className="flex items-center gap-2.5">
+              <Users className="text-emerald-400" size={18} />
+              <span className="text-sm font-semibold text-zinc-300">Socialize / Touch Grass</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3 pl-7">
+              <div>
+                <label className="block text-[10px] text-zinc-500 mb-1">Hours</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="24"
+                  value={socialHours}
+                  onChange={(e) => setSocialHours(Math.max(0, parseInt(e.target.value) || 0))}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] text-zinc-500 mb-1">Minutes</label>
+                <input
+                  type="number"
+                  min="0"
+                  max="59"
+                  value={socialMinutes}
+                  onChange={(e) => setSocialMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
+                />
+              </div>
+            </div>
           </div>
-          <hr className="border-gray-300" />
-          <div className="flex justify-between items-center bg-white rounded p-3">
-            <span className="font-semibold text-gray-900">⏳ Untracked Time Available</span>
-            <span className={`font-bold text-lg ${untrackedHours > 2 ? 'text-green-600' : 'text-orange-600'}`}>
-              {formatHours(untrackedHours)}
-            </span>
+
+          <button
+            type="submit"
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white p-3 rounded-xl font-semibold transition-all mt-4"
+          >
+            Save Life Activities
+          </button>
+        </form>
+
+        {/* Custom fields Panel */}
+        <div className="space-y-6">
+          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-4">
+            <h3 className="text-base font-bold text-white border-b border-zinc-800 pb-2">Add Custom Fields</h3>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-zinc-400 mb-1">Category Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Family Time, Shopping"
+                  value={customFieldName}
+                  onChange={(e) => setCustomFieldName(e.target.value)}
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2.5 rounded-xl text-xs focus:outline-none focus:border-blue-500 placeholder-zinc-700"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3.5">
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1">Hours</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={customFieldHours}
+                    onChange={(e) => setCustomFieldHours(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2.5 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-zinc-400 mb-1">Minutes</label>
+                  <input
+                    type="number"
+                    min="0"
+                    max="59"
+                    value={customFieldMinutes}
+                    onChange={(e) => setCustomFieldMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
+                    className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2.5 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+                  />
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleAddCustomField}
+                className="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 border border-zinc-700 p-2.5 rounded-xl text-xs font-semibold transition-all flex items-center justify-center gap-1.5"
+              >
+                <Plus size={14} /> Add Category
+              </button>
+            </div>
+
+            {/* Custom fields listing */}
+            {Object.keys(customFieldsList).length > 0 && (
+              <div className="border-t border-zinc-800 pt-3 space-y-2">
+                <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">Added custom items</p>
+                <div className="grid gap-2">
+                  {Object.keys(customFieldsList).map((name) => (
+                    <div
+                      key={name}
+                      className="bg-zinc-950 border border-zinc-850 px-3 py-2 rounded-xl flex items-center justify-between text-xs"
+                    >
+                      <div className="flex flex-col">
+                        <span className="font-bold text-zinc-200">{name}</span>
+                        <span className="text-[10px] text-zinc-500">{formatHours(customFieldsList[name])}</span>
+                      </div>
+                      <button
+                        onClick={() => handleRemoveCustomField(name)}
+                        className="text-zinc-500 hover:text-red-400 p-1.5"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-          <p className="text-sm text-gray-600 mt-3">
-            {untrackedHours > 2
-              ? '✅ Good! You have time for optimization or self-care'
-              : untrackedHours > 0
-              ? '⚠️ Limited time available - consider prioritizing'
-              : '🔴 No time left - ensure you capture all activities'}
-          </p>
+
+          {/* Availability ring summary */}
+          <div className="bg-gradient-to-br from-blue-950/20 to-zinc-900 border border-blue-900/30 p-5 rounded-2xl space-y-4">
+            <h3 className="text-sm font-bold text-white">⏳ Availability Balance</h3>
+            
+            <div className="space-y-2.5 text-xs font-medium">
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Total Life Activities:</span>
+                <span className="text-zinc-200">{lifeActivitiesTotal.toFixed(1)} hrs</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Productive Tasks Tracked:</span>
+                <span className="text-zinc-200">{productiveHoursToday.toFixed(1)} hrs</span>
+              </div>
+              <hr className="border-zinc-800" />
+              <div className="flex justify-between text-sm">
+                <span className="text-zinc-300 font-bold">Unallocated Remaining:</span>
+                <span className={`font-bold ${isOverbooked ? 'text-red-400' : remainingHours > 2 ? 'text-green-400' : 'text-amber-400'}`}>
+                  {remainingHours.toFixed(1)} hrs
+                </span>
+              </div>
+            </div>
+
+            <p className="text-[10px] leading-relaxed text-zinc-400 italic">
+              {isOverbooked
+                ? '🔴 Overbooked! Check logs to fix hours overlap.'
+                : remainingHours > 4
+                ? '🟢 Good balance. You have ample time for study or leisure.'
+                : remainingHours > 0
+                ? '🟡 Tight schedule! Dedicate remaining time to priorities.'
+                : '🔴 Day fully loaded.'}
+            </p>
+          </div>
         </div>
       </div>
     </div>

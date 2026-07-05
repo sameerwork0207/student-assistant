@@ -1,9 +1,10 @@
 /**
- * Analytics Service
- * Calculate productivity scores, streaks, trends, and insights
+ * Analytics Service - Version 2
+ * Pulls exclusively from ActivityLogs as the single source of truth.
+ * Computes streaks, weekly trends, sector breakdown, and average hours.
  */
 
-import { TaskEntry, AnalyticsData, DailyStats, Streak, DomainTask } from '@/types';
+import { Streak, DailyStats, AnalyticsData, ProductivityTrend } from '@/types';
 import { storageService } from './storage';
 
 export class AnalyticsService {
@@ -19,103 +20,73 @@ export class AnalyticsService {
   }
 
   /**
-   * Calculate total hours for a domain on a specific date
+   * Sum hours for a specific domain on a date (midnight timestamp)
    */
   calculateHoursForDomainOnDate(domainId: string, dateNumber: number): number {
     const state = storageService.getState();
-    const tasks = state.tasks.filter((t) => {
-      if (t.domainId !== domainId) return false;
-      const taskDate = new Date(t.data.date);
-      const compareDate = new Date(dateNumber);
-      return (
-        taskDate.getFullYear() === compareDate.getFullYear() &&
-        taskDate.getMonth() === compareDate.getMonth() &&
-        taskDate.getDate() === compareDate.getDate()
-      );
-    });
+    const compareDate = new Date(dateNumber);
+    compareDate.setHours(0, 0, 0, 0);
+    const targetMidnight = compareDate.getTime();
 
-    return tasks.reduce((sum, task) => {
-      const taskData = task.data as any;
-      return sum + (taskData.hoursSpent || 0);
-    }, 0);
+    return state.activityLogs
+      .filter((log) => {
+        if (log.domainId !== domainId) return false;
+        const logMidnight = new Date(log.date).setHours(0, 0, 0, 0);
+        return logMidnight === targetMidnight;
+      })
+      .reduce((sum, log) => sum + (log.hoursSpent || 0), 0);
   }
 
   /**
-   * Calculate daily stats for a specific date
+   * Calculate daily stats for a specific date (midnight timestamp)
    */
   calculateDailyStats(dateNumber: number): DailyStats {
     const state = storageService.getState();
-    const dateKey = new Date(dateNumber).toISOString().split('T')[0];
+    const compareDate = new Date(dateNumber);
+    compareDate.setHours(0, 0, 0, 0);
+    const targetMidnight = compareDate.getTime();
 
     const domainsHours: Record<string, number> = {};
     let totalHours = 0;
 
     state.domains.forEach((domain) => {
-      const hours = this.calculateHoursForDomainOnDate(domain.id, dateNumber);
+      const hours = this.calculateHoursForDomainOnDate(domain.id, targetMidnight);
       domainsHours[domain.id] = hours;
       totalHours += hours;
     });
 
-    const dayTasks = state.tasks.filter((t) => {
-      const taskDate = new Date(t.data.date);
-      const compareDate = new Date(dateNumber);
-      return (
-        taskDate.getFullYear() === compareDate.getFullYear() &&
-        taskDate.getMonth() === compareDate.getMonth() &&
-        taskDate.getDate() === compareDate.getDate()
-      );
-    });
+    // Count tasks completed on this date
+    const tasksCompleted = state.tasks.filter((t) => {
+      if (t.status !== 'completed' || !t.completedAt) return false;
+      const completedMidnight = new Date(t.completedAt).setHours(0, 0, 0, 0);
+      return completedMidnight === targetMidnight;
+    }).length;
 
-    const tasksCompleted = dayTasks.filter(
-      (t) => {
-        const taskData = t.data as any;
-        return taskData.completed !== false;
-      }
-    ).length;
-
-    const productivityScore = this.calculateProductivityScore(
-      totalHours,
-      tasksCompleted
-    );
-
-    const avgProductivityPerDomain: Record<string, number> = {};
-    state.domains.forEach((domain) => {
-      const domainTasks = dayTasks.filter((t) => t.domainId === domain.id);
-      if (domainTasks.length > 0) {
-        avgProductivityPerDomain[domain.id] =
-          domainTasks.filter((t) => (t.data as any).completed !== false).length /
-          domainTasks.length;
-      }
-    });
+    // Standardized productivity score (0 - 100)
+    // 10 points per hour (max 60pts for 6+ hours) + 10 points per completed task (max 40pts for 4+ tasks)
+    const hoursScore = Math.min(totalHours * 10, 60);
+    const taskScore = Math.min(tasksCompleted * 10, 40);
+    const productivityScore = Math.round(hoursScore + taskScore);
 
     return {
-      date: dateNumber,
+      date: targetMidnight,
       totalHours,
       domainsHours,
       tasksCompleted,
       productivityScore,
-      avgProductivityPerDomain,
     };
   }
 
   /**
-   * Calculate productivity score (0-100)
-   */
-  calculateProductivityScore(hoursTracked: number, tasksCompleted: number): number {
-    // Score formula: weighted combination of hours and task completion
-    const hoursScore = Math.min(hoursTracked * 10, 50); // Max 50 points for 5+ hours
-    const taskScore = Math.min(tasksCompleted * 10, 50); // Max 50 points for 5+ tasks
-    return Math.round(hoursScore + taskScore);
-  }
-
-  /**
-   * Calculate streak for a domain
+   * Calculate current and longest active streaks for a domain (logged hours > 0)
    */
   calculateStreak(domainId: string): Streak {
     const state = storageService.getState();
-    const domainTasks = state.tasks.filter((t) => t.domainId === domainId);
+    const domainLogs = state.activityLogs.filter(
+      (log) => log.domainId === domainId && log.hoursSpent > 0
+    );
 
-    if (domainTasks.length === 0) {
+    if (domainLogs.length === 0) {
       return {
         domainId,
         currentStreak: 0,
@@ -124,75 +95,73 @@ export class AnalyticsService {
       };
     }
 
-    // Get unique dates with tasks
+    // Extract unique dates of activity
     const activeDates = new Set<string>();
-    domainTasks.forEach((task) => {
-      const dateStr = new Date(task.data.date).toISOString().split('T')[0];
+    domainLogs.forEach((log) => {
+      const dateStr = new Date(log.date).toISOString().split('T')[0];
       activeDates.add(dateStr);
     });
 
+    // Sort descending
     const sortedDates = Array.from(activeDates)
       .map((d) => new Date(d).getTime())
       .sort((a, b) => b - a);
 
-    if (sortedDates.length === 0) {
-      return {
-        domainId,
-        currentStreak: 0,
-        longestStreak: 0,
-        lastActiveDate: 0,
-      };
-    }
-
-    let currentStreak = 1;
-    let longestStreak = 1;
+    let currentStreak = 0;
+    let longestStreak = 0;
     const lastActiveDate = sortedDates[0];
 
-    // Check if today or yesterday
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
 
-    const lastActiveTime = new Date(sortedDates[0]);
-    lastActiveTime.setHours(0, 0, 0, 0);
+    const lastActiveMidnight = new Date(lastActiveDate);
+    lastActiveMidnight.setHours(0, 0, 0, 0);
 
+    // If last active was today or yesterday, streak is alive
     if (
-      lastActiveTime.getTime() !== today.getTime() &&
-      lastActiveTime.getTime() !== yesterday.getTime()
+      lastActiveMidnight.getTime() === today.getTime() ||
+      lastActiveMidnight.getTime() === yesterday.getTime()
     ) {
-      currentStreak = 0; // Streak broken
-    } else {
-      // Count consecutive days
+      currentStreak = 1;
+      // Count backwards
       for (let i = 1; i < sortedDates.length; i++) {
         const curr = new Date(sortedDates[i - 1]);
         const prev = new Date(sortedDates[i]);
-        const diffDays =
-          (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
+        const diffDays = Math.round(
+          (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24)
+        );
 
         if (diffDays === 1) {
           currentStreak++;
-        } else {
+        } else if (diffDays > 1) {
           break;
         }
       }
     }
 
-    // Find longest streak
+    // Longest streak calculation
     let tempStreak = 1;
-    for (let i = 1; i < sortedDates.length; i++) {
-      const curr = new Date(sortedDates[i - 1]);
-      const prev = new Date(sortedDates[i]);
-      const diffDays =
-        (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
+    longestStreak = 1;
+    
+    // Sort ascending for longest calculation
+    const sortedAsc = [...sortedDates].sort((a, b) => a - b);
+    for (let i = 1; i < sortedAsc.length; i++) {
+      const prev = new Date(sortedAsc[i - 1]);
+      const curr = new Date(sortedAsc[i]);
+      const diffDays = Math.round(
+        (curr.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24)
+      );
 
       if (diffDays === 1) {
         tempStreak++;
         longestStreak = Math.max(longestStreak, tempStreak);
-      } else {
+      } else if (diffDays > 1) {
         tempStreak = 1;
       }
     }
+    longestStreak = Math.max(longestStreak, tempStreak);
 
     return {
       domainId,
@@ -203,157 +172,111 @@ export class AnalyticsService {
   }
 
   /**
-   * Get most productive hour (from tasks)
+   * Calculate average daily hours spent (over the last N days)
    */
-  getMostProductiveHour(): number | undefined {
+  calculateAverageHoursPerDay(days: number = 7): number {
     const state = storageService.getState();
-    const hourMap: Record<number, number> = {};
+    if (state.activityLogs.length === 0) return 0;
 
-    state.tasks.forEach((task) => {
-      const date = new Date(task.data.date);
-      const hour = date.getHours();
-      hourMap[hour] = (hourMap[hour] || 0) + 1;
+    const todayMidnight = new Date().setHours(0, 0, 0, 0);
+    const cutoff = todayMidnight - days * 24 * 60 * 60 * 1000;
+
+    const filteredLogs = state.activityLogs.filter((log) => log.date >= cutoff);
+    const totalHours = filteredLogs.reduce((sum, log) => sum + (log.hoursSpent || 0), 0);
+
+    // Divide by unique logging days, or by the parameter days
+    return totalHours / days;
+  }
+
+  /**
+   * Get the most active sector (domainId and name) based on lifetime hours
+   */
+  getMostActiveSector(): { domainId: string; name: string; hours: number } | null {
+    const state = storageService.getState();
+    if (state.activityLogs.length === 0) return null;
+
+    const hoursMap: Record<string, number> = {};
+    state.activityLogs.forEach((log) => {
+      hoursMap[log.domainId] = (hoursMap[log.domainId] || 0) + (log.hoursSpent || 0);
     });
 
-    if (Object.keys(hourMap).length === 0) {
-      return undefined;
-    }
+    let topDomainId = '';
+    let maxHours = -1;
 
-    return parseInt(
-      Object.keys(hourMap).reduce((a, b) =>
-        hourMap[parseInt(a)] > hourMap[parseInt(b)] ? a : b
-      )
-    );
-  }
-
-  /**
-   * Calculate average hours per day
-   */
-  calculateAverageHoursPerDay(days: number = 30): number {
-    const state = storageService.getState();
-    if (state.tasks.length === 0) return 0;
-
-    const now = Date.now();
-    const cutoffDate = now - days * 24 * 60 * 60 * 1000;
-
-    const relevantTasks = state.tasks.filter((t) => t.data.date >= cutoffDate);
-    if (relevantTasks.length === 0) return 0;
-
-    const totalHours = relevantTasks.reduce((sum, t) => {
-      const taskData = t.data as any;
-      return sum + (taskData.hoursSpent || 0);
-    }, 0);
-
-    // Count unique days
-    const uniqueDays = new Set<string>();
-    relevantTasks.forEach((t) => {
-      const dateStr = new Date(t.data.date).toISOString().split('T')[0];
-      uniqueDays.add(dateStr);
+    Object.keys(hoursMap).forEach((domId) => {
+      if (hoursMap[domId] > maxHours) {
+        maxHours = hoursMap[domId];
+        topDomainId = domId;
+      }
     });
 
-    return totalHours / uniqueDays.size;
+    const domain = state.domains.find((d) => d.id === topDomainId);
+    if (!domain) return null;
+
+    return {
+      domainId: topDomainId,
+      name: domain.name,
+      hours: maxHours,
+    };
   }
 
   /**
-   * Detect burnout risk (Low, Medium, High)
-   */
-  detectBurnoutRisk(): 'Low' | 'Medium' | 'High' {
-    const state = storageService.getState();
-    const avgHours = this.calculateAverageHoursPerDay(7);
-
-    if (avgHours > 10) {
-      return 'High';
-    } else if (avgHours > 6) {
-      return 'Medium';
-    }
-    return 'Low';
-  }
-
-  /**
-   * Generate productivity patterns
-   */
-  generatePatterns(): string[] {
-    const state = storageService.getState();
-    const patterns: string[] = [];
-
-    if (state.tasks.length === 0) {
-      return ['Start tracking to see patterns'];
-    }
-
-    // Find most active domain
-    const domainHours: Record<string, number> = {};
-    state.tasks.forEach((task) => {
-      const taskData = task.data as any;
-      domainHours[task.domainId] =
-        (domainHours[task.domainId] || 0) + (taskData.hoursSpent || 0);
-    });
-
-    const topDomain = Object.keys(domainHours).reduce((a, b) =>
-      domainHours[a] > domainHours[b] ? a : b
-    );
-
-    const topDomainObj = state.domains.find((d) => d.id === topDomain);
-    if (topDomainObj) {
-      patterns.push(`${topDomainObj.name} is your most focused area`);
-    }
-
-    const hoursPerDay = this.calculateAverageHoursPerDay(7);
-    if (hoursPerDay < 2) {
-      patterns.push('You can increase your daily tracking time');
-    } else if (hoursPerDay > 8) {
-      patterns.push('You have high productivity - watch for burnout');
-    }
-
-    return patterns;
-  }
-
-  /**
-   * Get recommendations
-   */
-  getRecommendations(): string[] {
-    const patterns = this.generatePatterns();
-    const burnoutRisk = this.detectBurnoutRisk();
-    const recommendations: string[] = [];
-
-    recommendations.push('Stay consistent with daily tracking');
-
-    if (burnoutRisk === 'High') {
-      recommendations.push('Consider taking breaks - you are working hard!');
-    }
-
-    if (patterns.some((p) => p.includes('increase'))) {
-      recommendations.push('Try dedicating 30 minutes more to your studies');
-    }
-
-    return recommendations;
-  }
-
-  /**
-   * Recalculate all analytics
+   * Recalculate daily stats, streaks, trends, and update storage
    */
   recalculateAllAnalytics(): void {
     const state = storageService.getState();
-    const analytics: AnalyticsData = {
-      dailyStats: {},
-      streaks: {},
-      trends: [],
-      mostProductiveHour: this.getMostProductiveHour(),
-      averageHoursPerDay: this.calculateAverageHoursPerDay(),
-    };
+    const streaks: Record<string, Streak> = {};
 
-    // Calculate streaks for all domains
-    state.domains.forEach((domain) => {
-      analytics.streaks[domain.id] = this.calculateStreak(domain.id);
+    state.domains.forEach((dom) => {
+      streaks[dom.id] = this.calculateStreak(dom.id);
     });
 
-    // Calculate stats for last 30 days
-    for (let i = 0; i < 30; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      date.setHours(0, 0, 0, 0);
-      const dateStr = date.toISOString().split('T')[0];
-      analytics.dailyStats[dateStr] = this.calculateDailyStats(date.getTime());
+    // Compute weekly trend data (past 7 days including today)
+    const trends: ProductivityTrend[] = [];
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const today = new Date();
+    
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+
+      const dateKey = d.toISOString().split('T')[0];
+      const dayName = dayNames[d.getDay()];
+
+      // Sum hours across all logs on this day
+      const dailyHours = state.activityLogs
+        .filter((log) => {
+          const logDate = new Date(log.date).toISOString().split('T')[0];
+          return logDate === dateKey;
+        })
+        .reduce((sum, log) => sum + (log.hoursSpent || 0), 0);
+
+      trends.push({
+        day: dayName,
+        hoursTracked: parseFloat(dailyHours.toFixed(1)),
+        dateKey,
+      });
     }
+
+    // Compute dailyStats mapping for last 30 days
+    const dailyStats: Record<string, DailyStats> = {};
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(today);
+      d.setDate(today.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+      const dateKey = d.toISOString().split('T')[0];
+      dailyStats[dateKey] = this.calculateDailyStats(d.getTime());
+    }
+
+    const averageHoursPerDay = this.calculateAverageHoursPerDay(7);
+
+    const analytics: AnalyticsData = {
+      dailyStats,
+      streaks,
+      trends,
+      averageHoursPerDay: parseFloat(averageHoursPerDay.toFixed(1)),
+    };
 
     storageService.updateAnalytics(analytics);
   }

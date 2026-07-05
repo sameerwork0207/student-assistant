@@ -6,22 +6,35 @@ import { AppLayout } from '@/components/Layout';
 import { OnboardingFlow } from '@/components/Onboarding';
 import { Dashboard } from '@/components/Dashboard';
 import { LifeActivityTracker } from '@/components/LifeActivity';
+import { TaskManager } from '@/components/TaskManager';
+import { HistoryView } from '@/components/HistoryView';
 import {
   AcademicStudiesInput,
-  SportsArtInput,
-  PersonalStudiesInput,
+  SportsInput,
+  HobbiesInput,
+  ArtInput,
+  GenericSectorForm,
 } from '@/components/DomainInputs';
+import { Loader2 } from 'lucide-react';
 
 export default function Home() {
   const { state, isLoading } = useApp();
   const [currentTab, setCurrentTab] = useState('dashboard');
+  const [selectedDomainId, setSelectedDomainId] = useState('');
+
+  // Set default selected logging domain if domains exist
+  React.useEffect(() => {
+    if (state?.domains?.length > 0 && !selectedDomainId) {
+      setSelectedDomainId(state.domains[0].id);
+    }
+  }, [state?.domains, selectedDomainId]);
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-center">
-          <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
-          <p className="text-gray-600 font-semibold">Loading your assistant...</p>
+      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+        <div className="text-center space-y-3">
+          <Loader2 className="animate-spin text-blue-500 mx-auto" size={36} />
+          <p className="text-zinc-400 font-semibold text-sm">Loading your Student Assistant...</p>
         </div>
       </div>
     );
@@ -36,78 +49,87 @@ export default function Home() {
       return <Dashboard />;
     }
 
+    if (currentTab === 'tasks') {
+      return <TaskManager />;
+    }
+
     if (currentTab === 'life-activity') {
       return <LifeActivityTracker />;
     }
 
-    const domain = state.domains.find((d) => d.id === currentTab);
-    if (!domain) {
-      return <Dashboard />;
+    if (currentTab === 'history') {
+      return <HistoryView />;
     }
 
-    return (
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">{domain.name}</h1>
-          <p className="text-gray-600 mt-1">
-            {domain.description || `Track your progress in ${domain.name}`}
-          </p>
-        </div>
+    if (currentTab === 'log-activity') {
+      const selectedDomain = state.domains.find((d) => d.id === selectedDomainId) || state.domains[0];
+      if (!selectedDomain) {
+        return (
+          <div className="text-center text-zinc-500 text-xs py-8">
+            No sectors created. Add a sector to log activity.
+          </div>
+        );
+      }
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 bg-white rounded-lg p-6 border border-gray-200">
-            <h2 className="text-xl font-bold mb-4">Log Activity</h2>
-            {currentTab === 'academic_studies' && (
-              <AcademicStudiesInput
-                domainId={domain.id}
-                domainName={domain.name}
-              />
-            )}
-            {currentTab === 'sports_hobbies_art' && (
-              <SportsArtInput
-                domainId={domain.id}
-                domainName={domain.name}
-              />
-            )}
-            {currentTab === 'personal_studies' && (
-              <PersonalStudiesInput
-                domainId={domain.id}
-                domainName={domain.name}
-              />
-            )}
-            {domain.isCustom && (
-              <PersonalStudiesInput
-                domainId={domain.id}
-                domainName={domain.name}
-              />
-            )}
+      return (
+        <div className="space-y-6">
+          <div className="text-center">
+            <h2 className="text-2xl font-bold text-white tracking-tight">Log Productivity Hours</h2>
+            <p className="text-sm text-zinc-400">Choose a sector and record manual logs or start a timer session</p>
           </div>
 
-          <div className="bg-white rounded-lg p-6 border border-gray-200">
-            <h2 className="text-xl font-bold mb-4">Recent Activity</h2>
-            {state.tasks
-              .filter((t) => t.domainId === domain.id)
-              .slice(-5)
-              .reverse()
-              .map((task) => (
-                <div key={task.id} className="mb-3 pb-3 border-b last:border-b-0">
-                  <p className="text-sm font-semibold text-gray-700">
-                    {(task.data as any).subject ||
-                      (task.data as any).subDomain ||
-                      'Activity'}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {new Date(task.data.date).toLocaleDateString()}
-                  </p>
-                </div>
-              ))}
-            {state.tasks.filter((t) => t.domainId === domain.id).length === 0 && (
-              <p className="text-gray-500 text-sm">No activities logged yet</p>
-            )}
+          <div className="max-w-xl mx-auto space-y-4">
+            {/* Sector Selector Dropdown */}
+            <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl">
+              <label className="block text-xs font-semibold text-zinc-400 mb-1.5">Select Sector to Log</label>
+              <select
+                value={selectedDomainId}
+                onChange={(e) => setSelectedDomainId(e.target.value)}
+                className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2.5 rounded-xl text-sm focus:outline-none focus:border-blue-500"
+              >
+                {state.domains.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.icon || '📌'} {d.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Custom Sector forms mapping */}
+            <div className="bg-zinc-900 border border-zinc-800 p-5 md:p-6 rounded-2xl space-y-4">
+              <div className="border-b border-zinc-800 pb-3">
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <span className="text-xl">{selectedDomain.icon || '📌'}</span>
+                  Log session for {selectedDomain.name}
+                </h3>
+              </div>
+
+              {selectedDomain.id === 'academic_studies' && (
+                <AcademicStudiesInput domainId={selectedDomain.id} domainName={selectedDomain.name} />
+              )}
+              {selectedDomain.id === 'sports' && (
+                <SportsInput domainId={selectedDomain.id} domainName={selectedDomain.name} />
+              )}
+              {selectedDomain.id === 'hobbies' && (
+                <HobbiesInput domainId={selectedDomain.id} domainName={selectedDomain.name} />
+              )}
+              {selectedDomain.id === 'art' && (
+                <ArtInput domainId={selectedDomain.id} domainName={selectedDomain.name} />
+              )}
+              {/* Fallback forms for personal_studies or custom sectors */}
+              {selectedDomain.id !== 'academic_studies' &&
+               selectedDomain.id !== 'sports' &&
+               selectedDomain.id !== 'hobbies' &&
+               selectedDomain.id !== 'art' && (
+                <GenericSectorForm domainId={selectedDomain.id} domainName={selectedDomain.name} />
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    );
+      );
+    }
+
+    return <Dashboard />;
   };
 
   return (

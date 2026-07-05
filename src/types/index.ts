@@ -38,14 +38,15 @@ export interface UserProfile {
   educationDetails: EducationDetails;
   createdAt: number;
   lastUpdated: number;
-  preferencesDarkMode?: boolean;
 }
 
-// Productivity Domains
+// Productivity Domains (Sectors)
 export enum DefaultDomain {
   ACADEMIC_STUDIES = 'academic_studies',
   PERSONAL_STUDIES = 'personal_studies',
-  SPORTS_HOBBIES = 'sports_hobbies_art',
+  SPORTS = 'sports',
+  HOBBIES = 'hobbies',
+  ART = 'art',
 }
 
 export interface Domain {
@@ -58,69 +59,56 @@ export interface Domain {
   createdAt: number;
 }
 
-// Domain-Specific Task Data
-export interface AcademicTask {
-  type: 'academic';
-  date: number;
-  hoursSpent: number;
-  subject: string;
-  unitStudied: string;
-  conceptsCleared: 'Yes' | 'Partial' | 'No';
-  revisionDone: boolean;
-  notes?: string;
+// Tasks (Planned Intention)
+export interface Task {
+  id: string;
+  title: string;
+  domainId: string;
+  subdomain?: string; // normalized
+  status: 'pending' | 'completed';
+  createdAt: number;
+  completedAt?: number;
+  linkedActivityLogId?: string; // Links task completion directly to an ActivityLog entry
 }
 
-export interface SportsArtTask {
-  type: 'sports_art';
-  date: number;
-  hoursSpent: number;
-  skillsPracticed: string[];
-  skillsLearned: string[];
-  performancesAttended?: number;
-  notes?: string;
-}
-
-export interface SocialSkillsTask {
-  type: 'social';
-  date: number;
-  peopleInteracted: number;
-  newPeopleMet: number;
-  lifetimeStrangersTalked?: number;
-  notes?: string;
-}
-
-export interface PersonalStudiesTask {
-  type: 'personal';
-  date: number;
-  subDomain: string;
-  task: string;
-  hoursSpent: number;
-  completed: boolean;
-  notes?: string;
-}
-
-export type DomainTask = AcademicTask | SportsArtTask | SocialSkillsTask | PersonalStudiesTask;
-
-// Task Entry
-export interface TaskEntry {
+// ActivityLogs (Actual Execution - Single Source of Truth)
+export interface ActivityLog {
   id: string;
   domainId: string;
-  data: DomainTask;
+  topic: string; // normalized
+  subdomain?: string; // normalized (subject, sport name, hobby name, art type, etc.)
+  hoursSpent: number;
+  notes?: string;
+  source: 'manual' | 'timer' | 'task';
+  date: number; // midnight timestamp
   createdAt: number;
   updatedAt: number;
+  linkedTaskId?: string;
+  migratedLegacy?: boolean;
+  details?: Record<string, any>; // sector specific values
 }
 
-// Life Activity Tracking
+// TimerSessions (Persistent Running Timers)
+export interface TimerSession {
+  startedAt: number; // timestamp
+  pausedAt: number | null; // timestamp when paused, null if running
+  totalPausedTime: number; // milliseconds spent paused
+  isActive: boolean;
+  linkedTaskId: string | null;
+  sectorId: string;
+  topic: string;
+  subdomain?: string;
+}
+
+// LifeActivities (Sleep, Commute, Meals, etc.)
 export interface LifeActivity {
-  date: number;
-  sleep: {
-    hours: number;
-    quality?: 'Poor' | 'Fair' | 'Good' | 'Excellent';
-  };
-  eating: number; // hours
+  date: number; // midnight timestamp
+  sleep: number; // hours
   travel: number; // hours
-  idleScrolling: number; // hours
-  other?: number; // hours
+  meals: number; // hours
+  scrollIdle: number; // hours
+  socialize: number; // hours
+  custom: Record<string, number>; // custom field -> hours
 }
 
 // Analytics & Statistics
@@ -130,7 +118,6 @@ export interface DailyStats {
   domainsHours: Record<string, number>; // domainId -> hours
   tasksCompleted: number;
   productivityScore: number;
-  avgProductivityPerDomain: Record<string, number>;
 }
 
 export interface Streak {
@@ -141,51 +128,29 @@ export interface Streak {
 }
 
 export interface ProductivityTrend {
-  week: number;
-  year: number;
-  data: {
-    day: string;
-    hoursTracked: number;
-    tasksCompleted: number;
-    productivityScore: number;
-  }[];
+  day: string; // e.g. "Mon"
+  hoursTracked: number;
+  dateKey: string; // "YYYY-MM-DD"
 }
 
 export interface AnalyticsData {
-  dailyStats: Record<string, DailyStats>; // date -> stats
+  dailyStats: Record<string, DailyStats>; // dateKey -> stats
   streaks: Record<string, Streak>; // domainId -> streak
   trends: ProductivityTrend[];
-  mostProductiveHour?: number;
-  mostProductiveDay?: string;
   averageHoursPerDay: number;
-}
-
-// AI Insights
-export interface DailySummary {
-  date: number;
-  totalHours: number;
-  highlightedDomains: string[]; // top 3 domains by hours
-  patterns: string[]; // behavioral insights
-  suggestions: string[]; // improvement suggestions
-  burnoutRisk: 'Low' | 'Medium' | 'High';
-  motivationalMessage: string;
-}
-
-export interface AIInsight {
-  type: 'summary' | 'pattern' | 'burnout' | 'improvement';
-  message: string;
-  actionableItem?: string;
-  generatedAt: number;
 }
 
 // App State
 export interface AppState {
   user: UserProfile | null;
   domains: Domain[];
-  tasks: TaskEntry[];
-  lifeActivities: Record<string, LifeActivity>; // date -> activity
+  tasks: Task[];
+  activityLogs: ActivityLog[];
+  timerSessions: Record<string, TimerSession>; // domainId -> TimerSession
+  lifeActivities: Record<string, LifeActivity>; // dateKey -> LifeActivity
   analytics: AnalyticsData;
   hasCompletedOnboarding: boolean;
+  schemaVersion: number;
   lastSyncedAt?: number;
 }
 
