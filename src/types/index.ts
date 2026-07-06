@@ -1,5 +1,5 @@
 /**
- * Core Type Definitions for Student Assistant App
+ * Core Type Definitions for Student Assistant App (V3)
  * Domain-driven design with comprehensive data models
  */
 
@@ -57,6 +57,7 @@ export interface Domain {
   color: string;
   icon?: string;
   createdAt: number;
+  isArchived?: boolean; // Safe sector deletion - sets isArchived to true
 }
 
 // Tasks (Planned Intention)
@@ -64,17 +65,25 @@ export interface Task {
   id: string;
   title: string;
   domainId: string;
+  domainNameSnapshot: string; // Captured at creation to preserve historical names
   subdomain?: string; // normalized
   status: 'pending' | 'completed';
   createdAt: number;
   completedAt?: number;
   linkedActivityLogId?: string; // Links task completion directly to an ActivityLog entry
+  
+  // Rich task additions
+  description?: string;
+  checklist?: { text: string; done: boolean }[];
+  links?: { label: string; url: string }[];
+  imageIds?: string[]; // IDs reference blobs in IndexedDB
 }
 
 // ActivityLogs (Actual Execution - Single Source of Truth)
 export interface ActivityLog {
   id: string;
   domainId: string;
+  domainNameSnapshot: string; // Captured at creation to preserve historical names
   topic: string; // normalized
   subdomain?: string; // normalized (subject, sport name, hobby name, art type, etc.)
   hoursSpent: number;
@@ -85,7 +94,15 @@ export interface ActivityLog {
   updatedAt: number;
   linkedTaskId?: string;
   migratedLegacy?: boolean;
-  details?: Record<string, any>; // sector specific values
+  details?: Record<string, unknown>; // sector specific values
+}
+
+// TaskImage (IndexedDB structure)
+export interface TaskImage {
+  id: string;
+  name: string;
+  compressedData: string; // Base64
+  size: number;
 }
 
 // TimerSessions (Persistent Running Timers)

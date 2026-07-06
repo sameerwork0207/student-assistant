@@ -1,369 +1,378 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useApp } from '@/context/AppContext';
-import { analyticsService } from '@/lib/analytics';
-import { formatHours, getTodayMidnight } from '@/lib/utils';
-import { ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area } from 'recharts';
-import { Clock, Flame, BarChart3, Star, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { getDailyQuote } from '@/lib/quotes';
+import { PieChart, Pie, Cell, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, AreaChart, Area } from 'recharts';
+import { Clock, CheckSquare, Flame, Calendar, BookOpen, Layers, CheckCircle2, ChevronRight } from 'lucide-react';
 
 export function Dashboard() {
   const { state } = useApp();
-  const [selectedDomainId, setSelectedDomainId] = useState<string | null>(null);
+  const [selectedSectorId, setSelectedSectorId] = useState<string | null>(null);
 
-  const todayMidnight = useMemo(() => getTodayMidnight(), []);
-  const todayStr = useMemo(() => new Date(todayMidnight).toISOString().split('T')[0], [todayMidnight]);
+  // Load daily quote
+  const dailyQuote = useMemo(() => getDailyQuote(), []);
 
-  // 1. Memoized Daily Stats for Today
-  const todayStats = useMemo(() => {
-    const domainsHours: Record<string, number> = {};
-    let totalHours = 0;
+  // Today's boundaries
+  const todayMidnight = useMemo(() => {
+    return new Date().setHours(0, 0, 0, 0);
+  }, []);
 
-    state.domains.forEach((dom) => {
-      // Sum logs for this domain today
-      const hours = state.activityLogs
-        .filter((log) => {
-          if (log.domainId !== dom.id) return false;
-          const logMidnight = new Date(log.date).setHours(0, 0, 0, 0);
-          return logMidnight === todayMidnight;
-        })
-        .reduce((sum, log) => sum + log.hoursSpent, 0);
-      
-      domainsHours[dom.id] = hours;
-      totalHours += hours;
+  // Filter logs for today
+  const logsToday = useMemo(() => {
+    return state.activityLogs.filter((log) => {
+      const logMidnight = new Date(log.date).setHours(0, 0, 0, 0);
+      return logMidnight === todayMidnight;
     });
+  }, [state.activityLogs, todayMidnight]);
 
-    return {
-      totalHours,
-      domainsHours,
-    };
-  }, [state.activityLogs, state.domains, todayMidnight]);
+  // Today's completed tasks
+  const completedTasksToday = useMemo(() => {
+    return state.tasks.filter((task) => {
+      if (task.status !== 'completed' || !task.completedAt) return false;
+      const completedMidnight = new Date(task.completedAt).setHours(0, 0, 0, 0);
+      return completedMidnight === todayMidnight;
+    });
+  }, [state.tasks, todayMidnight]);
 
-  // 2. Memoized Sector Streaks
-  const streaksMap = useMemo(() => {
-    const map: Record<string, { current: number; best: number }> = {};
-    state.domains.forEach((dom) => {
-      const streakObj = analyticsService.calculateStreak(dom.id);
-      map[dom.id] = {
-        current: streakObj.currentStreak,
-        best: streakObj.longestStreak,
-      };
+  // Monitored hours sum today
+  const monitoredHoursToday = useMemo(() => {
+    return logsToday.reduce((sum, log) => sum + (log.hoursSpent || 0), 0);
+  }, [logsToday]);
+
+  // Expose active (non-archived) domains map for quick checks
+  const domainColors = useMemo(() => {
+    const map: Record<string, string> = {};
+    state.domains.forEach((d) => {
+      map[d.id] = d.color;
     });
     return map;
-  }, [state.activityLogs, state.domains]);
+  }, [state.domains]);
 
-  // 3. Memoized Most Active Sector
-  const mostActiveSector = useMemo(() => {
-    return analyticsService.getMostActiveSector();
-  }, [state.activityLogs, state.domains]);
+  const domainNames = useMemo(() => {
+    const map: Record<string, string> = {};
+    state.domains.forEach((d) => {
+      map[d.id] = d.name;
+    });
+    return map;
+  }, [state.domains]);
 
-  // 4. Memoized Weekly Trend Data (past 7 days)
-  const weeklyTrendData = useMemo(() => {
-    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const data = [];
-    const today = new Date();
+  // Today's distribution for Pie Chart
+  const pieData = useMemo(() => {
+    const totals: Record<string, { name: string; value: number; color: string }> = {};
 
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      d.setHours(0, 0, 0, 0);
-      const dateKey = d.toISOString().split('T')[0];
-      const dayName = dayNames[d.getDay()];
+    logsToday.forEach((log) => {
+      const name = log.domainNameSnapshot || domainNames[log.domainId] || 'Unknown';
+      const color = domainColors[log.domainId] || '#6B7280';
+      if (!totals[log.domainId]) {
+        totals[log.domainId] = { name, value: 0, color };
+      }
+      totals[log.domainId].value += log.hoursSpent;
+    });
 
-      const hours = state.activityLogs
-        .filter((log) => new Date(log.date).toISOString().split('T')[0] === dateKey)
-        .reduce((sum, log) => sum + log.hoursSpent, 0);
+    return Object.values(totals).map((item) => ({
+      ...item,
+      value: parseFloat(item.value.toFixed(2)),
+    }));
+  }, [logsToday, domainNames, domainColors]);
 
-      data.push({
-        day: dayName,
-        Hours: parseFloat(hours.toFixed(2)),
+  // Subdomain breakdown of selected active domain today
+  const barData = useMemo(() => {
+    if (!selectedSectorId) return [];
+    const totals: Record<string, number> = {};
+    
+    logsToday
+      .filter((log) => log.domainId === selectedSectorId)
+      .forEach((log) => {
+        const sub = log.subdomain || 'General';
+        totals[sub] = (totals[sub] || 0) + log.hoursSpent;
       });
+
+    return Object.keys(totals).map((sub) => ({
+      name: sub,
+      hours: parseFloat(totals[sub].toFixed(2)),
+    }));
+  }, [logsToday, selectedSectorId]);
+
+  // Recharts 7-Day Trend calculations
+  const trendData = useMemo(() => {
+    const weekLogs: Record<string, number> = {};
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    
+    // Initialize past 7 days
+    const result = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().split('T')[0];
+      const name = dayNames[d.getDay()];
+      weekLogs[key] = 0;
+      result.push({ day: name, dateKey: key, hours: 0 });
     }
-    return data;
+
+    state.activityLogs.forEach((log) => {
+      const dateKey = new Date(log.date).toISOString().split('T')[0];
+      if (weekLogs[dateKey] !== undefined) {
+        weekLogs[dateKey] += log.hoursSpent;
+      }
+    });
+
+    return result.map((item) => ({
+      ...item,
+      hours: parseFloat(weekLogs[item.dateKey].toFixed(2)),
+    }));
   }, [state.activityLogs]);
 
-  const weeklyAverage = useMemo(() => {
-    const totalHours = weeklyTrendData.reduce((sum, day) => sum + day.Hours, 0);
-    return parseFloat((totalHours / 7).toFixed(1));
-  }, [weeklyTrendData]);
-
-  // 5. Pie Chart Data (today's hours distribution)
-  const pieChartData = useMemo(() => {
-    return state.domains
-      .map((dom) => ({
-        name: dom.name,
-        value: parseFloat((todayStats.domainsHours[dom.id] || 0).toFixed(2)),
-        color: dom.color,
-      }))
-      .filter((d) => d.value > 0);
-  }, [state.domains, todayStats]);
-
-  // 6. Selected Sector Subdomain Breakdown
-  const subdomainBreakdown = useMemo(() => {
-    if (!selectedDomainId) return [];
-
-    // Group logs of this domain by subdomain/subject
-    const groupings: Record<string, number> = {};
-    state.activityLogs
-      .filter((log) => log.domainId === selectedDomainId)
-      .forEach((log) => {
-        const sub = log.subdomain || 'General / Uncategorized';
-        groupings[sub] = (groupings[sub] || 0) + log.hoursSpent;
-      });
-
-    return Object.keys(groupings).map((sub) => ({
-      subdomain: sub,
-      Hours: parseFloat(groupings[sub].toFixed(2)),
-    })).sort((a, b) => b.Hours - a.Hours);
-  }, [state.activityLogs, selectedDomainId]);
-
-  const selectedDomainName = useMemo(() => {
-    if (!selectedDomainId) return '';
-    return state.domains.find((d) => d.id === selectedDomainId)?.name || 'Custom Sector';
-  }, [state.domains, selectedDomainId]);
-
-  // Date formatting for dashboard subtitle
-  const readableTodayDate = useMemo(() => {
-    return new Date().toLocaleDateString(undefined, {
-      weekday: 'long',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  }, []);
+  // Streaks statistics
+  const currentStreak = useMemo(() => {
+    const streaks = state.analytics?.streaks || {};
+    // Get maximum active streak across domains
+    const vals = Object.values(streaks);
+    if (vals.length === 0) return 0;
+    return Math.max(...vals.map((s) => s.currentStreak), 0);
+  }, [state.analytics]);
 
   return (
     <div className="space-y-6 text-zinc-100 font-sans">
-      {/* Header */}
-      <div>
-        <h2 className="text-2xl font-bold text-white tracking-tight">Dashboard Overview</h2>
-        <p className="text-sm text-zinc-400">{readableTodayDate}</p>
+      
+      {/* Curved Dark Quote Widget */}
+      <div className="bg-zinc-900/60 border border-zinc-800/80 p-4 rounded-2xl flex flex-col items-center text-center max-w-4xl mx-auto shadow-sm">
+        <p className="text-xs italic text-zinc-300 font-medium">&quot;{dailyQuote.text}&quot;</p>
+        <span className="text-[10px] text-zinc-500 font-bold tracking-wider mt-1.5">— {dailyQuote.author}</span>
       </div>
 
-      {/* Key Stats Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Today's Hours */}
-        <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex items-start gap-4">
-          <div className="p-2.5 bg-blue-600/10 border border-blue-500/20 text-blue-400 rounded-xl">
-            <Clock size={20} />
-          </div>
+      {/* Side-by-Side EQUAL Balanced KPI metrics */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* KPI 1: Monitored Hours */}
+        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex flex-col justify-between hover:border-zinc-750 transition-colors">
           <div>
-            <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">Hours Today</p>
-            <p className="text-xl font-bold text-white mt-1">{formatHours(todayStats.totalHours)}</p>
-          </div>
-        </div>
-
-        {/* Global/Active Streak */}
-        <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex items-start gap-4">
-          <div className="p-2.5 bg-amber-600/10 border border-amber-500/20 text-amber-400 rounded-xl">
-            <Flame size={20} />
-          </div>
-          <div>
-            <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">Max Active Streak</p>
-            <p className="text-xl font-bold text-white mt-1">
-              {Math.max(...Object.values(streaksMap).map((s) => s.current), 0)} Days
-            </p>
-          </div>
-        </div>
-
-        {/* Weekly Avg */}
-        <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex items-start gap-4">
-          <div className="p-2.5 bg-purple-600/10 border border-purple-500/20 text-purple-400 rounded-xl">
-            <BarChart3 size={20} />
-          </div>
-          <div>
-            <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">7-Day Avg</p>
-            <p className="text-xl font-bold text-white mt-1">{formatHours(weeklyAverage)}</p>
-          </div>
-        </div>
-
-        {/* Most Active Sector */}
-        <div className="bg-zinc-900 border border-zinc-800 p-4 rounded-2xl flex items-start gap-4">
-          <div className="p-2.5 bg-emerald-600/10 border border-emerald-500/20 text-emerald-400 rounded-xl">
-            <Star size={20} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-xs text-zinc-400 font-semibold uppercase tracking-wider">Top Sector</p>
-            <p className="text-base font-bold text-white mt-1.5 truncate">
-              {mostActiveSector ? mostActiveSector.name : 'None'}
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Sector Cards - Hours spent per sector */}
-      <div className="space-y-3">
-        <h3 className="text-sm font-bold text-zinc-400 uppercase tracking-wider">Tracking Sectors</h3>
-        
-        {state.domains.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3.5">
-            {state.domains.map((dom) => {
-              const hrsToday = todayStats.domainsHours[dom.id] || 0;
-              const streak = streaksMap[dom.id] || { current: 0, best: 0 };
-              const isSelected = selectedDomainId === dom.id;
-
-              return (
-                <button
-                  key={dom.id}
-                  onClick={() => setSelectedDomainId(isSelected ? null : dom.id)}
-                  className={`bg-zinc-900 border p-4 rounded-2xl flex flex-col text-left transition-all duration-200 select-none ${
-                    isSelected
-                      ? 'border-blue-500 ring-1 ring-blue-500'
-                      : 'border-zinc-850 hover:border-zinc-700'
-                  }`}
-                >
-                  <div className="flex items-start justify-between w-full">
-                    <span className="text-2xl">{dom.icon || '📌'}</span>
-                    
-                    {streak.current > 0 && (
-                      <span className="flex items-center text-[10px] font-bold text-amber-500 gap-0.5" title="Active Streak">
-                        <Flame size={12} fill="#f59e0b" /> {streak.current}
-                      </span>
-                    )}
-                  </div>
-                  
-                  <h4 className="text-sm font-bold text-white mt-3 leading-tight">{dom.name}</h4>
-                  
-                  <div className="flex items-baseline gap-1 mt-4">
-                    <span className="text-xl font-black text-white">{hrsToday.toFixed(1)}</span>
-                    <span className="text-[10px] font-semibold text-zinc-500 uppercase tracking-wider">hrs today</span>
-                  </div>
-
-                  <div className="flex items-center gap-1 mt-2 text-[10px] font-medium text-zinc-450 self-end">
-                    <span>Breakdown</span>
-                    {isSelected ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        ) : (
-          <div className="bg-zinc-900 border border-zinc-850 p-6 text-center text-zinc-500 rounded-2xl">
-            <AlertCircle className="mx-auto text-zinc-600 mb-2" />
-            <p className="font-semibold text-sm">No sectors active. Complete onboarding or add custom domains.</p>
-          </div>
-        )}
-      </div>
-
-      {/* Expanded subdomains breakdown list & Recharts Bar Chart */}
-      {selectedDomainId && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 md:p-6 space-y-5 animate-slide-down">
-          <div className="border-b border-zinc-800 pb-3">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <span>{state.domains.find((d) => d.id === selectedDomainId)?.icon || '📌'}</span>
-              {selectedDomainName} Breakdown
-            </h3>
-            <p className="text-xs text-zinc-400 mt-0.5">Hours logged by specific subjects / subdomains</p>
-          </div>
-
-          {subdomainBreakdown.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Table/List */}
-              <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
-                {subdomainBreakdown.map((row, idx) => (
-                  <div
-                    key={idx}
-                    className="bg-zinc-950 border border-zinc-850 p-3 rounded-xl flex items-center justify-between gap-3 text-xs"
-                  >
-                    <span className="font-bold text-zinc-200">{row.subdomain}</span>
-                    <span className="font-mono font-black text-white bg-zinc-900 border border-zinc-800 px-2 py-1 rounded">
-                      {formatHours(row.Hours)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Bar Chart */}
-              <div className="h-[220px] bg-zinc-950 border border-zinc-850 p-3 rounded-xl flex items-center justify-center">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={subdomainBreakdown} layout="vertical">
-                    <XAxis type="number" stroke="#52525b" fontSize={10} />
-                    <YAxis dataKey="subdomain" type="category" stroke="#52525b" fontSize={9} width={90} tickLine={false} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px' }}
-                      labelStyle={{ color: '#fafafa', fontSize: '11px', fontWeight: 'bold' }}
-                      itemStyle={{ color: '#60a5fa', fontSize: '11px' }}
-                    />
-                    <Bar dataKey="Hours" fill="#3b82f6" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-zinc-450 uppercase tracking-widest font-bold">Monitored Hours Today</span>
+              <Clock size={16} className="text-blue-500" />
             </div>
-          ) : (
-            <p className="text-xs text-zinc-500 py-4 text-center">No logs recorded in this sector yet.</p>
-          )}
+            <h3 className="text-3xl font-black mt-3 tracking-tight text-white">
+              {monitoredHoursToday.toFixed(1)} <span className="text-sm font-semibold text-zinc-500">hrs</span>
+            </h3>
+          </div>
+          <p className="text-[10px] text-zinc-500 mt-4 font-semibold">Tracked from timers and logs</p>
         </div>
-      )}
 
-      {/* Visualizations Panel */}
+        {/* KPI 2: Completed Tasks */}
+        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex flex-col justify-between hover:border-zinc-750 transition-colors">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-zinc-450 uppercase tracking-widest font-bold">Tasks Completed Today</span>
+              <CheckSquare size={16} className="text-green-500" />
+            </div>
+            <h3 className="text-3xl font-black mt-3 tracking-tight text-white">
+              {completedTasksToday.length} <span className="text-sm font-semibold text-zinc-500">tasks</span>
+            </h3>
+          </div>
+          <p className="text-[10px] text-zinc-500 mt-4 font-semibold">Value completion over tracking time</p>
+        </div>
+
+        {/* KPI 3: Max Domain Streak */}
+        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex flex-col justify-between hover:border-zinc-750 transition-colors">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-zinc-450 uppercase tracking-widest font-bold">Highest Active Streak</span>
+              <Flame size={16} className="text-orange-500 animate-pulse" />
+            </div>
+            <h3 className="text-3xl font-black mt-3 tracking-tight text-white">
+              {currentStreak} <span className="text-sm font-semibold text-zinc-500">days</span>
+            </h3>
+          </div>
+          <p className="text-[10px] text-zinc-500 mt-4 font-semibold">Keep up your daily consistency</p>
+        </div>
+      </div>
+
+      {/* Main Charts & Completed Tasks Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Pie/Donut Chart: Sector Distribution */}
-        <div className="lg:col-span-1 bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-4">
-          <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-wider flex items-center gap-2">
-            Sector Allocation Today
-          </h3>
+        
+        {/* Left Column: Today's Distribution & Completed Feed */}
+        <div className="lg:col-span-1 space-y-6">
           
-          {pieChartData.length > 0 ? (
-            <div className="h-[200px] flex items-center justify-center relative">
+          {/* Pie Chart Card */}
+          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-3">
+            <h3 className="text-sm font-bold text-zinc-300 flex items-center gap-2">
+              <Layers size={15} className="text-blue-500" />
+              Sector Allocation Today
+            </h3>
+
+            {pieData.length > 0 ? (
+              <div className="space-y-4">
+                <div className="h-44 w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={50}
+                        outerRadius={70}
+                        paddingAngle={3}
+                        dataKey="value"
+                      >
+                        {pieData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px' }}
+                        itemStyle={{ color: '#fafafa', fontSize: '11px' }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                
+                {/* Custom legends */}
+                <div className="grid grid-cols-2 gap-2 text-[10px] font-semibold text-zinc-350">
+                  {pieData.map((entry, index) => (
+                    <div key={index} className="flex items-center gap-1.5 truncate">
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: entry.color }} />
+                      <span className="truncate">{entry.name}</span>
+                      <span className="text-zinc-500">({entry.value}h)</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-500 text-center py-10">No hours logged today.</p>
+            )}
+          </div>
+
+          {/* Today's Completed Tasks scrollable list */}
+          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-3">
+            <h3 className="text-sm font-bold text-zinc-300 flex items-center gap-2">
+              <CheckCircle2 size={15} className="text-green-500" />
+              Completed Feed Today
+            </h3>
+            
+            {completedTasksToday.length > 0 ? (
+              <div className="space-y-2 max-h-[190px] overflow-y-auto pr-1">
+                {completedTasksToday.map((task) => {
+                  const color = domainColors[task.domainId] || '#6B7280';
+                  return (
+                    <div
+                      key={task.id}
+                      className="bg-zinc-950 border border-zinc-850 p-2.5 rounded-xl flex flex-col gap-1 hover:border-zinc-800 transition-colors"
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="text-xs font-bold text-zinc-300 leading-tight">{task.title}</span>
+                        {task.completedAt && (
+                          <span className="text-[9px] font-mono text-zinc-500 whitespace-nowrap">
+                            {new Date(task.completedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 mt-0.5">
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+                        <span className="text-[9px] text-zinc-500 font-bold">{task.domainNameSnapshot}</span>
+                        {task.subdomain && (
+                          <span className="text-[9px] text-zinc-650 bg-zinc-900 px-1 py-0.5 rounded font-medium">
+                            {task.subdomain}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-500 text-center py-6">No tasks completed today yet.</p>
+            )}
+          </div>
+        </div>
+
+        {/* Right Column: Weekly Hours Trend & Interactive Subdomains */}
+        <div className="lg:col-span-2 space-y-6">
+          
+          {/* Weekly Area Trend Chart */}
+          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-3">
+            <h3 className="text-sm font-bold text-zinc-300 flex items-center gap-2">
+              <Calendar size={15} className="text-blue-500" />
+              Weekly Productivity Hours
+            </h3>
+            
+            <div className="h-44 w-full">
               <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={pieChartData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={75}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {pieChartData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={entry.color} />
-                    ))}
-                  </Pie>
+                <AreaChart data={trendData} margin={{ top: 10, right: 5, left: -25, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="colorHours" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.25}/>
+                      <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="day" stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} />
+                  <YAxis stroke="#71717a" fontSize={10} tickLine={false} axisLine={false} />
                   <Tooltip
                     contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px' }}
-                    itemStyle={{ fontSize: '10px', color: '#fff' }}
+                    labelStyle={{ color: '#fafafa', fontSize: '11px', fontWeight: 'bold' }}
+                    itemStyle={{ color: '#3B82F6', fontSize: '11px' }}
                   />
-                </PieChart>
+                  <Area type="monotone" dataKey="hours" name="Hours" stroke="#3B82F6" strokeWidth={2} fillOpacity={1} fill="url(#colorHours)" />
+                </AreaChart>
               </ResponsiveContainer>
-              {/* Inner details */}
-              <div className="absolute text-center">
-                <span className="text-[10px] text-zinc-500 uppercase tracking-wider font-bold">Total</span>
-                <p className="text-lg font-black text-white leading-tight">{todayStats.totalHours.toFixed(1)}h</p>
-              </div>
             </div>
-          ) : (
-            <div className="h-[200px] flex items-center justify-center text-zinc-500 text-xs text-center p-4">
-              Log sector hours or use timers to visualize sector allocation.
-            </div>
-          )}
-        </div>
+          </div>
 
-        {/* AreaChart: Weekly Trend */}
-        <div className="lg:col-span-2 bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-4">
-          <h3 className="text-sm font-bold text-zinc-300 uppercase tracking-wider">
-            7-Day Activity Trend
-          </h3>
-          
-          <div className="h-[200px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={weeklyTrendData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorHours" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.25}/>
-                    <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="day" stroke="#52525b" fontSize={10} tickLine={false} />
-                <YAxis stroke="#52525b" fontSize={10} axisLine={false} tickLine={false} />
-                <Tooltip
-                  contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px' }}
-                  labelStyle={{ color: '#fafafa', fontSize: '11px', fontWeight: 'bold' }}
-                  itemStyle={{ color: '#60a5fa', fontSize: '11px' }}
-                />
-                <Area type="monotone" dataKey="Hours" stroke="#3b82f6" strokeWidth={2.5} fillOpacity={1} fill="url(#colorHours)" />
-              </AreaChart>
-            </ResponsiveContainer>
+          {/* Interactive Sectors List and Subdomain breakdown */}
+          <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-4">
+            <h3 className="text-sm font-bold text-zinc-300">Interact with Sectors</h3>
+            
+            {/* Clickable Sector Badges */}
+            <div className="flex flex-wrap gap-2">
+              {state.domains.map((dom) => {
+                const logsForDom = logsToday.filter((l) => l.domainId === dom.id);
+                const hrs = logsForDom.reduce((s, l) => s + l.hoursSpent, 0);
+                const isSelected = selectedSectorId === dom.id;
+
+                return (
+                  <button
+                    key={dom.id}
+                    onClick={() => setSelectedSectorId(isSelected ? null : dom.id)}
+                    className={`px-3 py-2 rounded-xl text-xs font-semibold flex items-center gap-2 border transition-all ${
+                      isSelected
+                        ? 'border-blue-500 bg-blue-600/10 text-blue-400'
+                        : 'border-zinc-800 bg-zinc-950 text-zinc-400 hover:border-zinc-700'
+                    }`}
+                  >
+                    <span>{dom.icon || '📌'}</span>
+                    <span>{dom.name}</span>
+                    <span className="text-[10px] text-zinc-550">({hrs.toFixed(1)}h)</span>
+                    <ChevronRight size={12} className={`transform transition-transform ${isSelected ? 'rotate-90 text-blue-400' : 'text-zinc-650'}`} />
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Subdomain Bar Chart for selected sector */}
+            {selectedSectorId && (
+              <div className="bg-zinc-950 p-4 border border-zinc-850 rounded-xl space-y-3 animate-fade-in">
+                <h4 className="text-xs font-bold text-zinc-300 flex items-center gap-1.5">
+                  <BookOpen size={14} className="text-blue-500" />
+                  Subdomain Breakdown for &quot;{domainNames[selectedSectorId]}&quot; today
+                </h4>
+
+                {barData.length > 0 ? (
+                  <div className="h-40 w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={barData} layout="vertical" margin={{ top: 5, right: 10, left: -10, bottom: 5 }}>
+                        <XAxis type="number" stroke="#71717a" fontSize={9} tickLine={false} axisLine={false} />
+                        <YAxis type="category" dataKey="name" stroke="#71717a" fontSize={9} tickLine={false} axisLine={false} width={70} />
+                        <Tooltip
+                          contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px' }}
+                          itemStyle={{ color: '#fafafa', fontSize: '10px' }}
+                        />
+                        <Bar dataKey="hours" name="Hours" fill={domainColors[selectedSectorId] || '#3B82F6'} radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                ) : (
+                  <p className="text-xs text-zinc-500 text-center py-6">No hours logged for this sector today.</p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       </div>

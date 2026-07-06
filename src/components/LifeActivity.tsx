@@ -3,8 +3,8 @@
 import React, { useState, useMemo } from 'react';
 import { LifeActivity } from '@/types';
 import { useApp } from '@/context/AppContext';
-import { getTodayMidnight, formatHours, timeToHours } from '@/lib/utils';
-import { Moon, Car, Utensils, Smartphone, Users, Plus, Trash2, AlertTriangle, CheckCircle } from 'lucide-react';
+import { getTodayMidnight, formatHours } from '@/lib/utils';
+import { Moon, Car, Utensils, Smartphone, Users, Plus, Trash2, AlertTriangle } from 'lucide-react';
 
 export function LifeActivityTracker() {
   const { state, saveLifeActivity } = useApp();
@@ -87,7 +87,6 @@ export function LifeActivityTracker() {
       [name]: parseFloat(duration.toFixed(2)),
     }));
 
-    // Reset custom inputs
     setCustomFieldName('');
     setCustomFieldHours(1);
     setCustomFieldMinutes(0);
@@ -178,7 +177,7 @@ export function LifeActivityTracker() {
   }, [sleepTotal, travelTotal, mealsTotal, scrollTotal, socialTotal, productiveHoursToday, customFieldsList, isOverbooked, remainingHours]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 text-zinc-100 font-sans">
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-white tracking-tight">Life Activity Tracking</h2>
@@ -198,11 +197,52 @@ export function LifeActivityTracker() {
         </div>
       )}
 
-      {/* Visual Stacked 24-Hour Bar */}
+      {/* ABSOLUTE TOP: Visual Utilizable Time & Accounted KPI Card */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {/* Remaining Productive Hours Card */}
+        <div className="bg-gradient-to-br from-blue-950/20 to-zinc-900 border border-blue-900/40 p-5 rounded-2xl md:col-span-2 flex flex-col justify-between">
+          <div>
+            <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Remaining Productive / Utilizable Hours</span>
+            <h3 className={`text-4xl font-black mt-2 tracking-tight ${isOverbooked ? 'text-red-400' : remainingHours > 2 ? 'text-green-400' : 'text-amber-400'}`}>
+              {remainingHours.toFixed(1)} <span className="text-sm font-semibold text-zinc-500">hrs remaining</span>
+            </h3>
+          </div>
+          <p className="text-[11px] text-zinc-450 mt-4 leading-relaxed font-sans">
+            {isOverbooked
+              ? '🔴 Time balance is exhausted. You have entered more than 24 hours of activities today.'
+              : remainingHours > 4
+              ? '✅ Excellent! You have ample unallocated hours left to schedule study sessions, hobbies, or rest.'
+              : '⚠️ Time is running short! Focus your remaining unallocated hours on high-priority tasks.'}
+          </p>
+        </div>
+
+        {/* Day Accounting Card */}
+        <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl flex flex-col justify-between">
+          <div>
+            <span className="text-[10px] text-zinc-400 font-bold uppercase tracking-wider">Logged Allocation</span>
+            <div className="space-y-2 mt-3 text-xs font-semibold text-zinc-300">
+              <div className="flex justify-between items-center">
+                <span className="text-zinc-500">Routine Activities:</span>
+                <span>{lifeActivitiesTotal.toFixed(1)}h</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-zinc-500">Productive Tasks:</span>
+                <span>{productiveHoursToday.toFixed(1)}h</span>
+              </div>
+            </div>
+          </div>
+          <div className="border-t border-zinc-800 pt-3 mt-3 flex justify-between items-baseline text-xs">
+            <span className="text-zinc-500 font-medium">Total Accounted:</span>
+            <span className="font-bold text-white">{totalAccountedHours.toFixed(1)} / 24 hrs</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Stacked 24-Hour Progress Allocation Bar */}
       <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-4">
-        <div className="flex justify-between items-center text-xs font-semibold text-zinc-400">
-          <span>24-Hour Day Allocation</span>
-          <span>Accounted: {totalAccountedHours.toFixed(1)} / 24 hrs</span>
+        <div className="flex justify-between items-center text-xs font-semibold text-zinc-450">
+          <span>Day Grid Timeline representation</span>
+          <span>{totalAccountedHours.toFixed(1)} hrs accounted</span>
         </div>
 
         {/* Stacked Progress Bar */}
@@ -218,8 +258,7 @@ export function LifeActivityTracker() {
                   backgroundColor: seg.color,
                 }}
               >
-                {/* Visual Segment Tooltip */}
-                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block bg-zinc-900 border border-zinc-700 text-zinc-100 text-[10px] px-2 py-1 rounded-md shadow-xl whitespace-nowrap z-10">
+                <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 hidden group-hover:block bg-zinc-900 border border-zinc-700 text-zinc-100 text-[10px] px-2 py-1 rounded-md shadow-xl whitespace-nowrap z-10 font-mono">
                   {seg.label}: {seg.value.toFixed(1)} hrs
                 </div>
               </div>
@@ -227,7 +266,7 @@ export function LifeActivityTracker() {
           })}
         </div>
 
-        {/* Labels Legend */}
+        {/* Legend */}
         <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
           {segments.map((seg) => (
             <div key={seg.key} className="flex items-center gap-2 text-xs font-medium">
@@ -238,8 +277,8 @@ export function LifeActivityTracker() {
           ))}
           {!isOverbooked && remainingHours > 0 && (
             <div className="flex items-center gap-2 text-xs font-medium">
-              <span className="w-2.5 h-2.5 rounded bg-zinc-950 border border-zinc-800" />
-              <span className="text-zinc-400">Remaining</span>
+              <span className="w-2.5 h-2.5 rounded bg-zinc-950 border border-zinc-850" />
+              <span className="text-zinc-400">Remaining Unallocated</span>
               <span className="text-zinc-500">({remainingHours.toFixed(1)}h)</span>
             </div>
           )}
@@ -254,7 +293,7 @@ export function LifeActivityTracker() {
           {/* Sleep */}
           <div className="space-y-2">
             <div className="flex items-center gap-2.5">
-              <Moon className="text-blue-400" size={18} />
+              <Moon className="text-blue-450" size={18} />
               <span className="text-sm font-semibold text-zinc-300">Sleep</span>
             </div>
             <div className="grid grid-cols-2 gap-3 pl-7">
@@ -318,7 +357,7 @@ export function LifeActivityTracker() {
           {/* Meals */}
           <div className="space-y-2">
             <div className="flex items-center gap-2.5">
-              <Utensils className="text-red-400" size={18} />
+              <Utensils className="text-red-405" size={18} />
               <span className="text-sm font-semibold text-zinc-300">Eating / Meals</span>
             </div>
             <div className="grid grid-cols-2 gap-3 pl-7">
@@ -330,7 +369,7 @@ export function LifeActivityTracker() {
                   max="24"
                   value={mealsHours}
                   onChange={(e) => setMealsHours(Math.max(0, parseInt(e.target.value) || 0))}
-                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
+                  className="w-full bg-zinc-955 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
                 />
               </div>
               <div>
@@ -341,7 +380,7 @@ export function LifeActivityTracker() {
                   max="59"
                   value={mealsMinutes}
                   onChange={(e) => setMealsMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
-                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
+                  className="w-full bg-zinc-955 border border-zinc-800 text-zinc-100 p-2 rounded-lg text-xs focus:outline-none focus:border-blue-500"
                 />
               </div>
             </div>
@@ -420,7 +459,7 @@ export function LifeActivityTracker() {
         </form>
 
         {/* Custom fields Panel */}
-        <div className="space-y-6">
+        <div className="space-y-4">
           <div className="bg-zinc-900 border border-zinc-800 p-5 rounded-2xl space-y-4">
             <h3 className="text-base font-bold text-white border-b border-zinc-800 pb-2">Add Custom Fields</h3>
 
@@ -432,7 +471,7 @@ export function LifeActivityTracker() {
                   placeholder="e.g. Family Time, Shopping"
                   value={customFieldName}
                   onChange={(e) => setCustomFieldName(e.target.value)}
-                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2.5 rounded-xl text-xs focus:outline-none focus:border-blue-500 placeholder-zinc-700"
+                  className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2.5 rounded-xl text-xs focus:outline-none focus:border-blue-500 placeholder-zinc-700 font-medium"
                 />
               </div>
 
@@ -444,7 +483,7 @@ export function LifeActivityTracker() {
                     min="0"
                     value={customFieldHours}
                     onChange={(e) => setCustomFieldHours(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2.5 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+                    className="w-full bg-zinc-955 border border-zinc-800 text-zinc-100 p-2.5 rounded-xl text-xs focus:outline-none"
                   />
                 </div>
                 <div>
@@ -455,7 +494,7 @@ export function LifeActivityTracker() {
                     max="59"
                     value={customFieldMinutes}
                     onChange={(e) => setCustomFieldMinutes(Math.min(59, Math.max(0, parseInt(e.target.value) || 0)))}
-                    className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2.5 rounded-xl text-xs focus:outline-none focus:border-blue-500"
+                    className="w-full bg-zinc-955 border border-zinc-800 text-zinc-100 p-2.5 rounded-xl text-xs focus:outline-none"
                   />
                 </div>
               </div>
@@ -469,7 +508,7 @@ export function LifeActivityTracker() {
               </button>
             </div>
 
-            {/* Custom fields listing */}
+            {/* Custom fields list */}
             {Object.keys(customFieldsList).length > 0 && (
               <div className="border-t border-zinc-800 pt-3 space-y-2">
                 <p className="text-[10px] text-zinc-400 uppercase tracking-widest font-bold">Added custom items</p>
@@ -494,39 +533,6 @@ export function LifeActivityTracker() {
                 </div>
               </div>
             )}
-          </div>
-
-          {/* Availability ring summary */}
-          <div className="bg-gradient-to-br from-blue-950/20 to-zinc-900 border border-blue-900/30 p-5 rounded-2xl space-y-4">
-            <h3 className="text-sm font-bold text-white">⏳ Availability Balance</h3>
-            
-            <div className="space-y-2.5 text-xs font-medium">
-              <div className="flex justify-between">
-                <span className="text-zinc-400">Total Life Activities:</span>
-                <span className="text-zinc-200">{lifeActivitiesTotal.toFixed(1)} hrs</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-zinc-400">Productive Tasks Tracked:</span>
-                <span className="text-zinc-200">{productiveHoursToday.toFixed(1)} hrs</span>
-              </div>
-              <hr className="border-zinc-800" />
-              <div className="flex justify-between text-sm">
-                <span className="text-zinc-300 font-bold">Unallocated Remaining:</span>
-                <span className={`font-bold ${isOverbooked ? 'text-red-400' : remainingHours > 2 ? 'text-green-400' : 'text-amber-400'}`}>
-                  {remainingHours.toFixed(1)} hrs
-                </span>
-              </div>
-            </div>
-
-            <p className="text-[10px] leading-relaxed text-zinc-400 italic">
-              {isOverbooked
-                ? '🔴 Overbooked! Check logs to fix hours overlap.'
-                : remainingHours > 4
-                ? '🟢 Good balance. You have ample time for study or leisure.'
-                : remainingHours > 0
-                ? '🟡 Tight schedule! Dedicate remaining time to priorities.'
-                : '🔴 Day fully loaded.'}
-            </p>
           </div>
         </div>
       </div>

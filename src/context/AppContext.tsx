@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
-import { AppState, UserProfile, Domain, Task, ActivityLog, TimerSession, LifeActivity, AnalyticsData } from '@/types';
+import { AppState, UserProfile, Domain, Task, ActivityLog, TimerSession, LifeActivity } from '@/types';
 import { storageService } from '@/lib/storage';
 import { analyticsService } from '@/lib/analytics';
 
@@ -19,17 +19,17 @@ interface AppContextType {
   
   // Domain actions
   addDomain: (domain: Domain) => void;
-  updateDomain: (domain: Domain) => void;
-  deleteDomain: (domainId: string) => void;
+  renameDomain: (domainId: string, newName: string) => void;
+  archiveDomain: (domainId: string) => void;
   
   // Task actions
-  addTask: (task: Task) => void;
+  addTask: (task: Omit<Task, 'domainNameSnapshot'>) => void;
   updateTask: (taskId: string, updatedTask: Partial<Task>) => void;
   toggleTaskCompletion: (taskId: string, logHours?: number, logNotes?: string) => void;
   deleteTask: (taskId: string) => void;
   
   // Activity Log actions
-  addActivityLog: (log: ActivityLog) => void;
+  addActivityLog: (log: Omit<ActivityLog, 'domainNameSnapshot'>) => void;
   updateActivityLog: (logId: string, updatedLog: Partial<ActivityLog>) => void;
   deleteActivityLog: (logId: string) => void;
 
@@ -55,7 +55,12 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const [state, setState] = useState<AppState>(() => storageService.getDefaultState());
+  const [state, setState] = useState<AppState>(() => {
+    if (typeof window !== 'undefined') {
+      return storageService.initializeStorage();
+    }
+    return storageService.getDefaultState();
+  });
   const [isLoading, setIsLoading] = useState(true);
 
   // Undo support
@@ -65,7 +70,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const registerUndo = useCallback((action: () => void, message: string) => {
     setUndoAction(() => action);
     setUndoMessage(message);
-    // Auto clear after 6 seconds
     const timer = setTimeout(() => {
       setUndoAction(null);
       setUndoMessage(null);
@@ -88,39 +92,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // Initialize on mount
   useEffect(() => {
-    const initialState = storageService.initializeStorage();
-    
-    // Timer Crash Recovery Logic:
-    // If there is any running timer, check if it was active and recover its time.
-    let timerModified = false;
-    const now = Date.now();
-    const updatedTimerSessions = { ...initialState.timerSessions };
-
-    Object.keys(updatedTimerSessions).forEach((domId) => {
-      const session = updatedTimerSessions[domId];
-      if (session && session.isActive) {
-        // If it was running (not paused) before the reload/crash
-        if (session.pausedAt === null) {
-          // It's still active. The UI will calculate the elapsed time dynamically.
-          // No modifications are strictly needed, but let's make sure it doesn't break.
-          console.log(`Recovered running timer session for sector: ${session.sectorId}`);
-        } else {
-          console.log(`Recovered paused timer session for sector: ${session.sectorId}`);
-        }
-      }
+    analyticsService.recalculateAllAnalytics();
+    Promise.resolve().then(() => {
+      setIsLoading(false);
     });
 
-    setState(initialState);
-    analyticsService.recalculateAllAnalytics();
-    setIsLoading(false);
-
-    // New Day Detection on Load and Window Focus
+    // New Day Detection
     const checkNewDay = () => {
       const lastActiveStr = localStorage.getItem('student-assistant-last-active-date');
       const todayStr = new Date().toISOString().split('T')[0];
 
       if (lastActiveStr && lastActiveStr !== todayStr) {
-        console.log('New day detected. Archiving logs and starting fresh daily view.');
+        console.log('New day detected. Recalculating stats.');
         analyticsService.recalculateAllAnalytics();
       }
       localStorage.setItem('student-assistant-last-active-date', todayStr);
@@ -131,10 +114,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('focus', checkNewDay);
   }, []);
 
-  const saveState = useCallback((newState: AppState) => {
-    setState(newState);
-    storageService.saveState(newState);
-  }, []);
 
   const setUser = useCallback(
     (user: UserProfile) => {
@@ -144,6 +123,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  // --- Domain / Sector Operations ---
   const addDomain = useCallback(
     (domain: Domain) => {
       storageService.saveDomain(domain);
@@ -152,28 +132,33 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  const updateDomain = useCallback(
-    (domain: Domain) => {
-      storageService.saveDomain(domain);
-      setState((prev) => ({
-        ...prev,
-        domains: prev.domains.map((d) => (d.id === domain.id ? domain : d)),
-      }));
+  const renameDomain = useCallback(
+    (domainId: string, newName: string) => {
+      setState((prev) => {
+        const domain = prev.domains.find((d) => d.id === domainId);
+        if (!domain || domain.isArchived) return prev;
+
+        const updatedDomain = { ...domain, name: newName.trim() };
+        storageService.saveDomain(updatedDomain);
+
+        return {
+          ...prev,
+          domains: prev.domains.map((d) => (d.id === domainId ? updatedDomain : d)),
+        };
+      });
     },
     []
   );
 
-  const deleteDomain = useCallback(
+  const archiveDomain = useCallback(
     (domainId: string) => {
-      storageService.deleteDomain(domainId);
+      storageService.archiveDomain(domainId);
       setState((prev) => {
         const newTimers = { ...prev.timerSessions };
         delete newTimers[domainId];
         return {
           ...prev,
-          domains: prev.domains.filter((d) => d.id !== domainId),
-          tasks: prev.tasks.filter((t) => t.domainId !== domainId),
-          activityLogs: prev.activityLogs.filter((al) => al.domainId !== domainId),
+          domains: prev.domains.map((d) => (d.id === domainId ? { ...d, isArchived: true } : d)),
           timerSessions: newTimers,
         };
       });
@@ -182,21 +167,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
-  // --- Tasks Operations ---
+  // --- Tasks Operations (Separate planned intention) ---
   const addTask = useCallback(
-    (task: Task) => {
-      storageService.addTask(task);
-      setState((prev) => ({ ...prev, tasks: [...prev.tasks, task] }));
+    (taskFields: Omit<Task, 'domainNameSnapshot'>) => {
+      setState((prev) => {
+        const dom = prev.domains.find((d) => d.id === taskFields.domainId);
+        const nameSnapshot = dom ? dom.name : 'General Sector';
+
+        const task: Task = {
+          ...taskFields,
+          domainNameSnapshot: nameSnapshot,
+        };
+
+        storageService.addTask(task);
+        
+        // Clear drafts from localStorage since we submitted successfully
+        localStorage.removeItem('student-assistant-task-draft');
+
+        const newState = {
+          ...prev,
+          tasks: [...prev.tasks, task],
+        };
+        return newState;
+      });
     },
     []
   );
 
   const updateTask = useCallback(
-    (taskId: string, updatedTask: Partial<Task>) => {
-      storageService.updateTask(taskId, updatedTask);
+    (taskId: string, updatedFields: Partial<Task>) => {
+      storageService.updateTask(taskId, updatedFields);
       setState((prev) => ({
         ...prev,
-        tasks: prev.tasks.map((t) => (t.id === taskId ? { ...t, ...updatedTask } : t)),
+        tasks: prev.tasks.map((t) => (t.id === taskId ? { ...t, ...updatedFields } : t)),
       }));
     },
     []
@@ -212,13 +215,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         const now = Date.now();
         let logId: string | undefined;
 
-        // If completed and logHours provided, write to ActivityLog
+        // If completed and hours logged, write to ActivityLog
         let updatedLogs = prev.activityLogs;
         if (isNowCompleted && logHours && logHours > 0) {
           logId = Math.random().toString(36).substring(2, 9);
+          
           const newLog: ActivityLog = {
             id: logId,
             domainId: task.domainId,
+            domainNameSnapshot: task.domainNameSnapshot, // Keep snapshot aligned
             topic: task.title,
             subdomain: task.subdomain,
             hoursSpent: logHours,
@@ -263,7 +268,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         storageService.deleteTask(taskId);
         
-        // Soft delete / Undo register
         const taskSnapshot = { ...deletedTask };
         registerUndo(() => {
           storageService.addTask(taskSnapshot);
@@ -280,22 +284,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [registerUndo]
   );
 
-  // --- Activity Log Operations ---
+  // --- Activity Log Operations (Actual execution) ---
   const addActivityLog = useCallback(
-    (log: ActivityLog) => {
-      storageService.addActivityLog(log);
-      setState((prev) => ({ ...prev, activityLogs: [...prev.activityLogs, log] }));
-      setTimeout(() => analyticsService.recalculateAllAnalytics(), 0);
+    (logFields: Omit<ActivityLog, 'domainNameSnapshot'>) => {
+      setState((prev) => {
+        const dom = prev.domains.find((d) => d.id === logFields.domainId);
+        const nameSnapshot = dom ? dom.name : 'General Sector';
+
+        const log: ActivityLog = {
+          ...logFields,
+          domainNameSnapshot: nameSnapshot,
+        };
+
+        storageService.addActivityLog(log);
+
+        const newState = {
+          ...prev,
+          activityLogs: [...prev.activityLogs, log],
+        };
+        setTimeout(() => analyticsService.recalculateAllAnalytics(), 0);
+        return newState;
+      });
     },
     []
   );
 
   const updateActivityLog = useCallback(
     (logId: string, updatedLog: Partial<ActivityLog>) => {
-      storageService.updateActivityLog(logId, updatedLog);
+      const fullUpdate = { ...updatedLog, updatedAt: Date.now() };
+      storageService.updateActivityLog(logId, fullUpdate);
       setState((prev) => ({
         ...prev,
-        activityLogs: prev.activityLogs.map((al) => (al.id === logId ? { ...al, ...updatedLog } : al)),
+        activityLogs: prev.activityLogs.map((al) => (al.id === logId ? { ...al, ...fullUpdate } : al)),
       }));
       setTimeout(() => analyticsService.recalculateAllAnalytics(), 0);
     },
@@ -311,7 +331,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
         storageService.deleteActivityLog(logId);
 
-        // Soft delete / Undo register
         const logSnapshot = { ...deletedLog };
         registerUndo(() => {
           storageService.addActivityLog(logSnapshot);
@@ -329,14 +348,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     [registerUndo]
   );
 
-  // --- Timer Operations ---
+  // --- Timer Operations (Single running timer constraint) ---
   const startTimer = useCallback(
     (domainId: string, topic: string, subdomain?: string, linkedTaskId?: string) => {
       setState((prev) => {
-        let newState = { ...prev };
+        const newState = { ...prev };
         const now = Date.now();
 
-        // 1. Single active timer enforcement: Stop and save any other running timer
+        // 1. Single active timer enforcement: stop and save any running timer
         Object.keys(newState.timerSessions).forEach((domId) => {
           const session = newState.timerSessions[domId];
           if (session && session.isActive) {
@@ -348,11 +367,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
             }
 
             const hours = parseFloat((elapsedMs / (1000 * 60 * 60)).toFixed(3));
-            if (hours > 0.005) { // Log session only if it is > 18 seconds
+            if (hours > 0.005) { // Log session only if > 18 seconds
               const logId = Math.random().toString(36).substring(2, 9);
+              const dom = newState.domains.find((d) => d.id === session.sectorId);
+              const nameSnapshot = dom ? dom.name : 'General Sector';
+
               const newLog: ActivityLog = {
                 id: logId,
                 domainId: session.sectorId,
+                domainNameSnapshot: nameSnapshot,
                 topic: session.topic,
                 subdomain: session.subdomain,
                 hoursSpent: hours,
@@ -480,11 +503,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       let updatedLogs = prev.activityLogs;
       let updatedTasks = prev.tasks;
 
-      if (hours > 0.001) { // Stop & log only if it is > 3 seconds
+      if (hours > 0.001) { // Stop & log only if > 3 seconds
         const logId = Math.random().toString(36).substring(2, 9);
+        const dom = prev.domains.find((d) => d.id === session.sectorId);
+        const nameSnapshot = dom ? dom.name : 'General Sector';
+
         const newLog: ActivityLog = {
           id: logId,
           domainId: session.sectorId,
+          domainNameSnapshot: nameSnapshot,
           topic: session.topic,
           subdomain: session.subdomain,
           hoursSpent: hours,
@@ -595,8 +622,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     clearUndo,
     setUser,
     addDomain,
-    updateDomain,
-    deleteDomain,
+    renameDomain,
+    archiveDomain,
     addTask,
     updateTask,
     toggleTaskCompletion,

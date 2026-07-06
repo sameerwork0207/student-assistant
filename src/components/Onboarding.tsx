@@ -367,7 +367,7 @@ export function OnboardingFlow({ onComplete }: OnboardingProps) {
     <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
       <div className="bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl p-6 md:p-8 max-w-md w-full">
         <h1 className="text-2xl font-bold mb-1 text-center text-blue-500">Student Assistant</h1>
-        <p className="text-center text-zinc-400 text-sm mb-6">Let's set up your profile and dashboard</p>
+        <p className="text-center text-zinc-400 text-sm mb-6">Let&apos;s set up your profile and dashboard</p>
 
         {step === 'education-level' && (
           <EducationLevelStep onNext={handleEducationLevelNext} />

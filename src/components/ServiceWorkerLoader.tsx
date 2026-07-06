@@ -30,10 +30,8 @@ export function ServiceWorkerLoader() {
     }
 
     // Handle app install prompt
-    let deferredPrompt: any;
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
-      deferredPrompt = e;
       // Show install button if needed
       const installButton = document.getElementById('install-button');
       if (installButton) {
@@ -46,7 +44,6 @@ export function ServiceWorkerLoader() {
       if (installButton) {
         installButton.style.display = 'none';
       }
-      deferredPrompt = null;
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);

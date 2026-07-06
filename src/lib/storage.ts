@@ -1,13 +1,15 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Storage Service - LocalStorage-based persistence
  * Offline-first, privacy-preserving data layer
- * Version 2: Centralized ActivityLog single source of truth, Task/Log separation, timer persistence.
+ * Version 3: Dynamic sectors, task drafts, IndexedDB images, name snapshots.
  */
+
 
 import { AppState, UserProfile, Domain, Task, ActivityLog, TimerSession, LifeActivity, AnalyticsData } from '@/types';
 
 const STORAGE_KEY = 'student-assistant-app-state';
-const VERSION = 2;
+const VERSION = 3;
 
 interface StorageData {
   version: number;
@@ -45,7 +47,7 @@ export class StorageService {
     try {
       const data = JSON.parse(stored);
       
-      // Migration from v1 or unversioned
+      // Migration from older versions
       if (!data.version || data.version < VERSION) {
         console.warn(`Storage version mismatch (${data.version || 1} -> ${VERSION}), migrating...`);
         const migratedState = this.migrateStorage(data);
@@ -53,12 +55,13 @@ export class StorageService {
         return migratedState;
       }
       
-      // Ensure key arrays/objects exist in state
       const state = data.state;
+      // Safeguard collections
       if (!state.activityLogs) state.activityLogs = [];
       if (!state.tasks) state.tasks = [];
       if (!state.timerSessions) state.timerSessions = {};
       if (!state.lifeActivities) state.lifeActivities = {};
+      if (!state.domains) state.domains = [];
       
       return state;
     } catch (error) {
@@ -123,7 +126,11 @@ export class StorageService {
     const state = this.getState();
     const existingIndex = state.domains.findIndex((d) => d.id === domain.id);
     if (existingIndex >= 0) {
-      state.domains[existingIndex] = domain;
+      // Preserve isArchived flag if already set on update
+      state.domains[existingIndex] = {
+        ...state.domains[existingIndex],
+        ...domain,
+      };
     } else {
       state.domains.push(domain);
     }
@@ -131,17 +138,20 @@ export class StorageService {
   }
 
   /**
-   * Delete domain
+   * Archive domain (safe sector removal)
    */
-  deleteDomain(domainId: string): void {
+  archiveDomain(domainId: string): void {
     const state = this.getState();
-    state.domains = state.domains.filter((d) => d.id !== domainId);
-    state.tasks = state.tasks.filter((t) => t.domainId !== domainId);
-    state.activityLogs = state.activityLogs.filter((al) => al.domainId !== domainId);
-    if (state.timerSessions[domainId]) {
-      delete state.timerSessions[domainId];
+    const dom = state.domains.find((d) => d.id === domainId);
+    if (dom) {
+      dom.isArchived = true;
+      
+      // Stop and clear any active timer session for this domain
+      if (state.timerSessions[domainId]) {
+        delete state.timerSessions[domainId];
+      }
+      this.saveState(state);
     }
-    this.saveState(state);
   }
 
   /**
@@ -205,7 +215,7 @@ export class StorageService {
   }
 
   /**
-   * Save running/paused Timer Session for a domain
+   * Save running/paused Timer Session
    */
   saveTimerSession(domainId: string, session: TimerSession): void {
     const state = this.getState();
@@ -266,13 +276,11 @@ export class StorageService {
   importFromJSON(jsonData: string): boolean {
     try {
       const parsed = JSON.parse(jsonData);
-      // Basic checks
       const stateToImport = parsed.state || parsed;
       if (!stateToImport.user || !stateToImport.domains) {
         throw new Error('Invalid data format');
       }
       
-      // Force Version 2 properties
       if (!stateToImport.activityLogs) stateToImport.activityLogs = [];
       if (!stateToImport.tasks) stateToImport.tasks = [];
       if (!stateToImport.timerSessions) stateToImport.timerSessions = {};
@@ -296,7 +304,7 @@ export class StorageService {
   }
 
   /**
-   * Get default empty state (Version 2)
+   * Get default empty state (Version 3)
    */
   getDefaultState(): AppState {
     return {
@@ -318,22 +326,81 @@ export class StorageService {
   }
 
   /**
-   * Safe migration from older storage versions to Version 2
+   * Migration handler to V3
    */
   private migrateStorage(oldData: any): AppState {
-    const oldState = oldData?.state || oldData;
+    const oldVersion = oldData?.version || 1;
+    let oldState = oldData?.state || oldData;
+
+    // Phase 1: Migrate V1 to V2 structure if necessary
+    if (oldVersion === 1) {
+      oldState = this.migrateV1ToV2(oldState);
+    }
+
+    // Phase 2: Migrate V2 to V3 structure
     const defaultState = this.getDefaultState();
-    
     const migratedState: AppState = {
+      ...defaultState,
+      user: oldState.user || null,
+      domains: oldState.domains || [],
+      lifeActivities: oldState.lifeActivities || {},
+      timerSessions: oldState.timerSessions || {},
+      hasCompletedOnboarding: oldState.hasCompletedOnboarding || false,
+      schemaVersion: VERSION,
+    };
+
+    // Helper map of domains for name snapshots
+    const domainsMap: Record<string, string> = {};
+    const defaultNames: Record<string, string> = {
+      academic_studies: 'Academic Studies',
+      personal_studies: 'Personal Studies',
+      sports: 'Sports Practice',
+      hobbies: 'Hobbies',
+      art: 'Art / Creativity',
+    };
+    
+    migratedState.domains.forEach((d: any) => {
+      domainsMap[d.id] = d.name;
+    });
+
+    const getDomainName = (domId: string) => {
+      return domainsMap[domId] || defaultNames[domId] || 'General Sector';
+    };
+
+    // Tasks Migration (inject domainNameSnapshot)
+    if (Array.isArray(oldState.tasks)) {
+      migratedState.tasks = oldState.tasks.map((t: any) => ({
+        ...t,
+        domainNameSnapshot: t.domainNameSnapshot || getDomainName(t.domainId),
+        status: t.status || 'pending',
+      }));
+    }
+
+    // Activity Logs Migration (inject domainNameSnapshot)
+    if (Array.isArray(oldState.activityLogs)) {
+      migratedState.activityLogs = oldState.activityLogs.map((log: any) => ({
+        ...log,
+        domainNameSnapshot: log.domainNameSnapshot || getDomainName(log.domainId),
+      }));
+    }
+
+    return migratedState;
+  }
+
+  /**
+   * V1 -> V2 Migration helper
+   */
+  private migrateV1ToV2(oldState: any): any {
+    const defaultState = this.getDefaultState();
+    const state: any = {
       ...defaultState,
       user: oldState.user || null,
       hasCompletedOnboarding: oldState.hasCompletedOnboarding || false,
     };
 
-    // 1. Domains Migration (Split sports_hobbies_art into sports, hobbies, art)
     let hasCombinedSportsHobbiesArt = false;
     if (Array.isArray(oldState.domains)) {
-      migratedState.domains = oldState.domains.map((d: any) => {
+      state.domains = oldState.domains.map((d: any) => {
         if (d.id === 'sports_hobbies_art') {
           hasCombinedSportsHobbiesArt = true;
           return {
@@ -350,8 +417,7 @@ export class StorageService {
       });
       
       if (hasCombinedSportsHobbiesArt) {
-        // Inject sports and art
-        migratedState.domains.push({
+        state.domains.push({
           id: 'sports',
           name: 'Sports',
           description: 'Track sports and skills practice',
@@ -371,19 +437,17 @@ export class StorageService {
       }
     }
 
-    // 2. Migrate Tasks (convert legacy TaskEntry to ActivityLogs and Tasks)
     const legacyTasks = oldState.tasks || [];
-    const migratedActivityLogs: ActivityLog[] = [];
-    const migratedTasks: Task[] = [];
+    const migratedLogs: any[] = [];
+    const migratedTasks: any[] = [];
 
     if (Array.isArray(legacyTasks)) {
       legacyTasks.forEach((legacy: any) => {
-        // Safe mapping
         let domId = legacy.domainId;
-        let isMigratedLegacy = false;
+        let isMigrated = false;
         if (domId === 'sports_hobbies_art') {
-          domId = 'hobbies'; // default to hobbies per migration instruction
-          isMigratedLegacy = true;
+          domId = 'hobbies';
+          isMigrated = true;
         }
 
         const taskData = legacy.data || {};
@@ -392,7 +456,6 @@ export class StorageService {
         const taskDate = taskData.date || legacy.createdAt || Date.now();
         const midnight = new Date(taskDate).setHours(0, 0, 0, 0);
 
-        // Normalize topic & subdomain
         let topicName = 'Study/Practice Session';
         let subName = '';
         const detailsObj: Record<string, any> = {};
@@ -405,8 +468,6 @@ export class StorageService {
         } else if (taskData.type === 'personal') {
           topicName = taskData.task || 'Personal Log';
           subName = taskData.subDomain || '';
-          
-          // Migrate incomplete personal tasks as pending tasks
           if (taskData.completed === false) {
             migratedTasks.push({
               id: legacy.id,
@@ -425,8 +486,7 @@ export class StorageService {
           detailsObj.performancesAttended = taskData.performancesAttended || 0;
         }
 
-        // Add to activity logs
-        migratedActivityLogs.push({
+        migratedLogs.push({
           id: legacy.id,
           domainId: domId,
           topic: topicName,
@@ -437,23 +497,21 @@ export class StorageService {
           date: midnight,
           createdAt: legacy.createdAt || Date.now(),
           updatedAt: legacy.updatedAt || Date.now(),
-          migratedLegacy: isMigratedLegacy || undefined,
+          migratedLegacy: isMigrated || undefined,
           details: Object.keys(detailsObj).length > 0 ? detailsObj : undefined,
         });
       });
     }
 
-    migratedState.activityLogs = migratedActivityLogs;
-    migratedState.tasks = migratedTasks;
+    state.activityLogs = migratedLogs;
+    state.tasks = migratedTasks;
 
-    // 3. Migrate Life Activities
     const oldLife = oldState.lifeActivities || {};
     const migratedLife: Record<string, LifeActivity> = {};
 
     Object.keys(oldLife).forEach((key) => {
       const act = oldLife[key];
       if (act) {
-        // convert quality + structures
         const sleepHrs = typeof act.sleep === 'object' ? (act.sleep.hours || 0) : (act.sleep || 0);
         migratedLife[key] = {
           date: act.date || new Date(key).getTime(),
@@ -461,16 +519,14 @@ export class StorageService {
           travel: act.travel || 0,
           meals: act.eating || 0,
           scrollIdle: act.idleScrolling || 0,
-          socialize: 0, // default
+          socialize: 0,
           custom: act.other ? { 'Other': act.other } : {},
         };
       }
     });
 
-    migratedState.lifeActivities = migratedLife;
-    migratedState.schemaVersion = VERSION;
-
-    return migratedState;
+    state.lifeActivities = migratedLife;
+    return state;
   }
 }
 

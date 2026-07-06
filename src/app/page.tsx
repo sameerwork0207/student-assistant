@@ -8,6 +8,7 @@ import { Dashboard } from '@/components/Dashboard';
 import { LifeActivityTracker } from '@/components/LifeActivity';
 import { TaskManager } from '@/components/TaskManager';
 import { HistoryView } from '@/components/HistoryView';
+import { SectorSettings } from '@/components/SectorSettings';
 import {
   AcademicStudiesInput,
   SportsInput,
@@ -25,16 +26,20 @@ export default function Home() {
   // Set default selected logging domain if domains exist
   React.useEffect(() => {
     if (state?.domains?.length > 0 && !selectedDomainId) {
-      setSelectedDomainId(state.domains[0].id);
+      // Find first non-archived domain
+      const firstActive = state.domains.find(d => !d.isArchived);
+      if (firstActive) {
+        setSelectedDomainId(firstActive.id);
+      }
     }
   }, [state?.domains, selectedDomainId]);
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-zinc-950 flex items-center justify-center">
+      <div className="min-h-screen bg-zinc-955 flex items-center justify-center">
         <div className="text-center space-y-3">
           <Loader2 className="animate-spin text-blue-500 mx-auto" size={36} />
-          <p className="text-zinc-400 font-semibold text-sm">Loading your Student Assistant...</p>
+          <p className="text-zinc-450 font-semibold text-sm">Loading your Student Assistant...</p>
         </div>
       </div>
     );
@@ -43,6 +48,9 @@ export default function Home() {
   if (!state.hasCompletedOnboarding) {
     return <OnboardingFlow onComplete={() => window.location.reload()} />;
   }
+
+  // Filter active domains for selector
+  const activeDomains = state.domains.filter((d) => !d.isArchived);
 
   const renderContent = () => {
     if (currentTab === 'dashboard') {
@@ -61,12 +69,22 @@ export default function Home() {
       return <HistoryView />;
     }
 
+    if (currentTab === 'sectors') {
+      return <SectorSettings />;
+    }
+
     if (currentTab === 'log-activity') {
-      const selectedDomain = state.domains.find((d) => d.id === selectedDomainId) || state.domains[0];
+      const selectedDomain = activeDomains.find((d) => d.id === selectedDomainId) || activeDomains[0];
       if (!selectedDomain) {
         return (
-          <div className="text-center text-zinc-500 text-xs py-8">
-            No sectors created. Add a sector to log activity.
+          <div className="text-center text-zinc-500 text-xs py-10 bg-zinc-900 border border-zinc-800 rounded-2xl max-w-md mx-auto space-y-3">
+            <p>No active sectors found.</p>
+            <button
+              onClick={() => setCurrentTab('sectors')}
+              className="bg-blue-600 hover:bg-blue-755 text-white px-4 py-2 rounded-xl text-xs font-bold"
+            >
+              Configure Sectors
+            </button>
           </div>
         );
       }
@@ -75,7 +93,7 @@ export default function Home() {
         <div className="space-y-6">
           <div className="text-center">
             <h2 className="text-2xl font-bold text-white tracking-tight">Log Productivity Hours</h2>
-            <p className="text-sm text-zinc-400">Choose a sector and record manual logs or start a timer session</p>
+            <p className="text-sm text-zinc-400">Choose an active sector and record manual logs or start a timer session</p>
           </div>
 
           <div className="max-w-xl mx-auto space-y-4">
@@ -87,7 +105,7 @@ export default function Home() {
                 onChange={(e) => setSelectedDomainId(e.target.value)}
                 className="w-full bg-zinc-950 border border-zinc-800 text-zinc-100 p-2.5 rounded-xl text-sm focus:outline-none focus:border-blue-500"
               >
-                {state.domains.map((d) => (
+                {activeDomains.map((d) => (
                   <option key={d.id} value={d.id}>
                     {d.icon || '📌'} {d.name}
                   </option>

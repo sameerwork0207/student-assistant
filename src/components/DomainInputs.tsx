@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '@/context/AppContext';
 import { ActivityLog } from '@/types';
-import { Play, Pause, Square, Trash2, Clock, Check, AlertTriangle } from 'lucide-react';
+import { Play, Pause, Square, Trash2 } from 'lucide-react';
 
 interface DomainInputProps {
   domainId: string;
@@ -33,7 +33,9 @@ function TimerLoggingControl({
   // Running Timer Duration Updates (Crash-resilient calculations)
   useEffect(() => {
     if (!session || !session.isActive) {
-      setLocalElapsed(0);
+      Promise.resolve().then(() => {
+        setLocalElapsed(0);
+      });
       return;
     }
 
@@ -233,6 +235,7 @@ export function AcademicStudiesInput({ domainId, domainName, onTaskAdded }: Doma
     const log: ActivityLog = {
       id: Math.random().toString(36).substring(2, 9),
       domainId,
+      domainNameSnapshot: domainName,
       topic: normalizedTopic,
       subdomain: normalizedSubject,
       hoursSpent: parseFloat(duration.toFixed(3)),
@@ -462,6 +465,7 @@ export function SportsInput({ domainId, domainName, onTaskAdded }: DomainInputPr
     const log: ActivityLog = {
       id: Math.random().toString(36).substring(2, 9),
       domainId,
+      domainNameSnapshot: domainName,
       topic: normalizedSkill,
       subdomain: normalizedSport,
       hoursSpent: parseFloat(duration.toFixed(3)),
@@ -640,6 +644,7 @@ export function HobbiesInput({ domainId, domainName, onTaskAdded }: DomainInputP
     const log: ActivityLog = {
       id: Math.random().toString(36).substring(2, 9),
       domainId,
+      domainNameSnapshot: domainName,
       topic: normalizedActivity,
       subdomain: normalizedHobby,
       hoursSpent: parseFloat(duration.toFixed(3)),
@@ -817,6 +822,7 @@ export function ArtInput({ domainId, domainName, onTaskAdded }: DomainInputProps
     const log: ActivityLog = {
       id: Math.random().toString(36).substring(2, 9),
       domainId,
+      domainNameSnapshot: domainName,
       topic: normalizedWork,
       subdomain: normalizedArt,
       hoursSpent: parseFloat(duration.toFixed(3)),
@@ -1010,6 +1016,7 @@ export function GenericSectorForm({ domainId, domainName, onTaskAdded }: DomainI
     const log: ActivityLog = {
       id: Math.random().toString(36).substring(2, 9),
       domainId,
+      domainNameSnapshot: domainName,
       topic: normalizedTopic,
       subdomain: normalizedSubdomain,
       hoursSpent: parseFloat(duration.toFixed(3)),
